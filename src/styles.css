@@ -42,3 +42,19 @@
 .install-footer-note p{font-size:10px;line-height:1.6;margin:0}
 @media(max-width:760px){.topbar{height:auto;min-height:72px;padding:10px 0;gap:10px}.topbar-actions{flex-direction:column-reverse;align-items:flex-end;gap:6px}.brand-logo{width:36px;height:36px}.brand{font-size:19px;gap:7px}.brand small{font-size:9px}.install-cta{font-size:9px;padding:9px 10px;gap:5px}.top-note{max-width:210px!important}.install-dialog{padding:20px 17px;border-radius:15px}.install-intro{gap:12px}.install-intro>img{width:62px;height:62px}.install-intro h2{font-size:23px}.install-intro .eyebrow{font-size:8px}.install-instructions{padding:14px}.install-backdrop{padding:12px}}
 @media(max-width:420px){.topbar{align-items:center}.brand{font-size:17px}.brand-logo{width:32px;height:32px}.top-note{font-size:8px!important;max-width:170px!important}.install-cta{font-size:8px;padding:8px}.install-cta svg{width:13px;height:13px}.install-intro{align-items:flex-start}.install-intro>img{width:52px;height:52px}.install-intro h2{font-size:20px}.install-dialog{max-height:93vh}.install-instructions li{font-size:11px}}
+
+
+/* Acciones para editar y eliminar mesas */
+.group-card{padding:0!important;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.group-card-open{display:flex;flex:1;flex-direction:column;align-items:stretch;width:100%;min-width:0;min-height:200px;text-align:left;padding:22px;border:0;border-radius:7px;background:transparent;color:var(--ink);font:inherit;position:relative}
+.group-card-open:focus-visible{outline:3px solid #78966b;outline-offset:-4px}
+.group-card-open:disabled{cursor:wait}
+.group-card-open .pin{right:88px;top:14px}
+.group-card-actions{position:absolute;top:9px;right:9px;z-index:3;display:flex;gap:5px}
+.group-card-actions button{width:30px;height:30px;display:grid;place-items:center;border:1px solid #6c73553b;border-radius:8px;background:#fffdf7d9;color:#465f40;box-shadow:0 1px 3px #302b1c12;transition:transform .15s,background .15s,color .15s}
+.group-card-actions button:hover{transform:translateY(-1px);background:#fffdf7}
+.group-card-actions button.delete-group-action{color:#a34e5c}
+.group-card-actions button.delete-group-action:hover{background:#f8dce5}
+.group-card-actions button:disabled{opacity:.45;cursor:wait}
+@media(max-width:760px){.group-card-open{padding:17px;min-height:180px}.group-card-open strong{font-size:19px}.group-card-open .pin{right:80px;top:12px}.group-card-actions{top:7px;right:7px;gap:4px}.group-card-actions button{width:28px;height:28px}}
+@media(max-width:390px){.group-card-open{min-height:150px}.group-card-open strong{margin-bottom:25px}}
