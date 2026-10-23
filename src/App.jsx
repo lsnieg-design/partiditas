@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Users, History, Trophy, Settings2, ArrowLeft, Minus, PlusCircle, NotebookPen, LoaderCircle, Check, Undo2, RotateCcw, Download, Smartphone, Share, X } from 'lucide-react';
+import { Plus, Users, History, Trophy, Settings2, ArrowLeft, Minus, PlusCircle, NotebookPen, LoaderCircle, Check, Undo2, RotateCcw, Download, Smartphone, Share, X, Pencil, Trash2 } from 'lucide-react';
 import { api } from './api.js';
 
 const GAMES = [
@@ -119,6 +119,83 @@ export default function App() {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
+  async function editGroup(g) {
+    const proposedName = window.prompt('¿Cómo querés llamar a esta mesa?', g.name || '');
+    if (proposedName === null) return;
+    const name = proposedName.trim();
+    if (!name) {
+      setError('El nombre de la mesa no puede quedar vacío.');
+      return;
+    }
+    if (name.length > 60) {
+      setError('El nombre de la mesa puede tener hasta 60 caracteres.');
+      return;
+    }
+
+    let accessCode = group?.id === g.id ? (group.accessCode || '') : '';
+    if (g.requiresKey && !accessCode) {
+      const entered = window.prompt(`La mesa “${g.name}” tiene clave. Ingresala para editarla:`);
+      if (entered === null) return;
+      accessCode = entered.trim();
+      if (!accessCode) {
+        setError('Necesitás ingresar la clave de esta mesa para editarla.');
+        return;
+      }
+    }
+
+    setBusy(true);
+    setError('');
+    try {
+      const data = await api('updateGroup', { groupId: g.id, accessCode, name });
+      setGroups(prev => prev.map(item => item.id === g.id ? { ...item, name: data.group?.name || name } : item));
+      if (group?.id === g.id) setGroup(prev => prev ? { ...prev, name: data.group?.name || name, accessCode: accessCode || prev.accessCode || '' } : prev);
+      setMessage(`Mesa actualizada: ${data.group?.name || name}.`);
+      setTimeout(() => setMessage(''), 2600);
+    } catch (e) {
+      setError(`No se pudo editar la mesa: ${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteGroup(g) {
+    const confirmed = window.confirm(
+      `¿Eliminar la mesa “${g.name}”?\n\nTambién se eliminarán sus partidas, rondas, resultados e historial. Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+
+    let accessCode = group?.id === g.id ? (group.accessCode || '') : '';
+    if (g.requiresKey && !accessCode) {
+      const entered = window.prompt(`La mesa “${g.name}” tiene clave. Ingresala para eliminarla:`);
+      if (entered === null) return;
+      accessCode = entered.trim();
+      if (!accessCode) {
+        setError('Necesitás ingresar la clave de esta mesa para eliminarla.');
+        return;
+      }
+    }
+
+    setBusy(true);
+    setError('');
+    try {
+      await api('deleteGroup', { groupId: g.id, accessCode });
+      setGroups(prev => prev.filter(item => item.id !== g.id));
+      if (group?.id === g.id) {
+        setGroup(null);
+        setHistory([]);
+        setActiveGame(null);
+        setScreen('home');
+        setRules(DEFAULT_RULES);
+      }
+      setMessage(`Se eliminó la mesa “${g.name}” y su historial.`);
+      setTimeout(() => setMessage(''), 3200);
+    } catch (e) {
+      setError(`No se pudo eliminar la mesa: ${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function joinGroup(e) {
     e.preventDefault(); setBusy(true); setError('');
     try {
@@ -248,7 +325,15 @@ export default function App() {
     {screen === 'home' && <>
       <section className="hero"><div><span className="eyebrow">LA MESA ESTÁ LISTA</span><h1>Una partida más.<br/><em>Y otra también.</em></h1><p>Creá una mesa para tu grupo, anotá los tantos y que la memoria la tenga la app.</p></div><div className="hero-doodle" aria-hidden="true"><div className="doodle-card yellow">¿Quién<br/>va ganando?</div><div className="doodle-card pink">¡Dale<br/>revancha!</div><span>✦</span></div></section>
       <section className="section-head home-section-head"><div><span className="eyebrow">EMPEZAR</span><h2>Tus mesas de juego</h2><p className="section-subtitle">Cada grupo tiene su propio historial y sus reglas.</p></div><div className="home-section-actions"><span className="count-pill">{groups.length} {groups.length === 1 ? 'mesa' : 'mesas'}</span><button type="button" className="button primary new-table-button" onClick={() => { setGroupForm(blankGroup); setError(''); setScreen('newgroup'); }}><Plus size={17}/> NUEVA MESA</button></div></section>
-      {groups.length ? <div className="group-grid">{groups.map((g, i) => <button className={`group-card note-${i%4}`} key={g.id} onClick={() => openGroup(g)}><span className="pin">✦</span><span className="card-kicker">MESA DE JUEGO</span><strong>{g.name}</strong><span className="card-bottom"><Users size={15}/> Abrir mesa <span>↗</span></span></button>)}</div> : <div className="empty-state home-empty"><span>🗒️</span><strong>Todavía no hay mesas creadas</strong><p>Creá la primera y empezá a guardar sus partidas.</p><button type="button" className="button secondary" onClick={() => setScreen('newgroup')}><Plus size={16}/> Crear la primera mesa</button></div>}
+      {groups.length ? <div className="group-grid">{groups.map((g, i) => <article className={`group-card note-${i%4}`} key={g.id}>
+        <button type="button" className="group-card-open" onClick={() => openGroup(g)} aria-label={`Abrir mesa ${g.name}`} disabled={busy}>
+          <span className="pin">✦</span><span className="card-kicker">MESA DE JUEGO</span><strong>{g.name}</strong><span className="card-bottom"><Users size={15}/> Abrir mesa <span>↗</span></span>
+        </button>
+        <div className="group-card-actions" aria-label={`Acciones para ${g.name}`}>
+          <button type="button" onClick={() => editGroup(g)} title={`Editar mesa ${g.name}`} aria-label={`Editar mesa ${g.name}`} disabled={busy}><Pencil size={14}/></button>
+          <button type="button" className="delete-group-action" onClick={() => deleteGroup(g)} title={`Eliminar mesa ${g.name}`} aria-label={`Eliminar mesa ${g.name}`} disabled={busy}><Trash2 size={14}/></button>
+        </div>
+      </article>)}</div> : <div className="empty-state home-empty"><span>🗒️</span><strong>Todavía no hay mesas creadas</strong><p>Creá la primera y empezá a guardar sus partidas.</p><button type="button" className="button secondary" onClick={() => setScreen('newgroup')}><Plus size={16}/> Crear la primera mesa</button></div>}
       <form className="join-strip" onSubmit={joinGroup}><div className="join-icon"><Users size={21}/></div><div><strong>¿Te compartieron el ID de una mesa?</strong><p>Ingresalo para abrir su historial.</p></div><input value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="ID de la mesa" required/><input value={joinAccessCode} onChange={e => setJoinAccessCode(e.target.value)} placeholder="Clave (si tiene)"/><button className="button secondary">Entrar</button></form>
       <p className="privacy-note"><NotebookPen size={15}/> Las partidas se guardan en Google Sheets, no en el almacenamiento del navegador.</p>
     </>}
