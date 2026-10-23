@@ -4,7 +4,7 @@
   "version": "0.4.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite", 
     "build": "node scripts/generate-pwa-icons.mjs && vite build",
     "preview": "vite preview"
   },
