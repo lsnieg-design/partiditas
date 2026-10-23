@@ -1,3 +1,162 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Plus, Users, History, Trophy, Settings2, ArrowLeft, Minus, PlusCircle, NotebookPen, LoaderCircle, Check, Undo2, RotateCcw } from 'lucide-react';
+import { api } from './api.js';
+
+const GAMES = [
+  { id: 'chinchon', name: 'Chinchón', emoji: '🃏', color: 'yellow', description: 'Puntos de penalización por ronda' },
+  { id: 'escoba', name: 'Escoba de 15', emoji: '🧹', color: 'pink', description: 'Escobas, cartas y oros' },
+  { id: 'truco', name: 'Truco', emoji: '♠', color: 'green', description: 'Marcador de buenas y malas' },
+  { id: 'rummy', name: 'Rummy', emoji: '♦', color: 'purple', description: 'Puntos de las cartas que quedan' },
+  { id: 'libre', name: 'Contador libre', emoji: '🎲', color: 'blue', description: 'Sumá o restá a tu manera' }
+];
+const DEFAULT_RULES = {
+  chinchon: { target: 100, direction: 'lower', unit: 'puntos', roundBased: true, chinchonBonus: 10, endAtTarget: true },
+  escoba: { target: 15, direction: 'higher', unit: 'tantos', roundBased: true, scoringMode: 'escoba-15', pointsPerEscoba: 1 },
+  truco: { target: 30, direction: 'higher', unit: 'tantos', roundBased: true, scoringMode: 'truco-teams', splitAt: 15 },
+  rummy: { target: 100, direction: 'lower', unit: 'puntos', roundBased: true, scoringMode: 'card-penalties' },
+  libre: { target: 0, direction: 'higher', unit: 'puntos', roundBased: true }
+};
+const blankGroup = { name: '', accessCode: '' };
+const mergeRules = (saved = {}) => Object.fromEntries(Object.keys(DEFAULT_RULES).map(id => [id, { ...DEFAULT_RULES[id], ...(saved?.[id] || {}) }]));
+const blankPlayers = () => ['', ''];
+
+export default function App() {
+  const [groups, setGroups] = useState([]);
+  const [group, setGroup] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [activeGame, setActiveGame] = useState(null);
+  const [screen, setScreen] = useState('home');
+  const [groupForm, setGroupForm] = useState(blankGroup);
+  const [joinCode, setJoinCode] = useState('');
+  const [joinAccessCode, setJoinAccessCode] = useState('');
+  const [gameForm, setGameForm] = useState({ gameId: 'chinchon', players: blankPlayers(), title: '' });
+  const [teamSetup, setTeamSetup] = useState({ names: ['Nosotros', 'Ellos'], members: ['', ''] });
+  const [rules, setRules] = useState(DEFAULT_RULES);
+  const [roundNote, setRoundNote] = useState('');
+  const [roundScores, setRoundScores] = useState({});
+  const [escobaAwards, setEscobaAwards] = useState({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' });
+  const [chinchonPlayer, setChinchonPlayer] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => { refreshGroups(); }, []);
+  async function refreshGroups() {
+    setBusy(true); setError('');
+    try { const data = await api('listGroups'); setGroups(data.groups || []); }
+    catch (e) { setError(`${e.message} Si todavía no configuraste Apps Script, seguí los pasos del README.`); }
+    finally { setBusy(false); setLoaded(true); }
+  }
+  async function openGroup(g) {
+    let accessCode = g.accessCode || '';
+    if (g.requiresKey && !accessCode) { accessCode = window.prompt('Esta mesa tiene clave. Ingresala para entrar:') || ''; if (!accessCode) return; }
+    setBusy(true); setError('');
+    try {
+      const data = await api('getGroup', { groupId: g.id, accessCode });
+      setGroup({ ...data.group, accessCode }); setHistory(data.games || []); setRules(mergeRules(data.group?.rules)); setScreen('group');
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }
+  async function createGroup(e) {
+    e.preventDefault(); setBusy(true); setError('');
+    try {
+      const data = await api('createGroup', { name: groupForm.name.trim(), accessCode: groupForm.accessCode.trim() });
+      const created = { ...data.group, accessCode: groupForm.accessCode.trim() };
+      setGroup(created); setGroups(prev => [...prev, { id: created.id, name: created.name }]); setHistory([]); setRules(mergeRules(data.group?.rules)); setGroupForm(blankGroup); setScreen('group');
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }
+  async function joinGroup(e) {
+    e.preventDefault(); setBusy(true); setError('');
+    try {
+      const data = await api('getGroup', { groupId: joinCode.trim(), accessCode: joinAccessCode.trim() });
+      setGroup({ ...data.group, accessCode: joinAccessCode.trim() }); setHistory(data.games || []); setRules(mergeRules(data.group?.rules)); setJoinCode(''); setJoinAccessCode(''); setScreen('group');
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }
+  function addPlayer() { setGameForm(f => ({ ...f, players: [...f.players, ''] })); }
+  function setPlayer(i, value) { setGameForm(f => ({ ...f, players: f.players.map((p, j) => i === j ? value : p) })); }
+  function chooseGame(id) {
+    setGameForm({ gameId: id, players: id === 'truco' ? blankPlayers() : blankPlayers(), title: '' });
+    setTeamSetup({ names: ['Nosotros', 'Ellos'], members: ['', ''] });
+  }
+  async function startGame(e) {
+    e.preventDefault();
+    const selected = GAMES.find(g => g.id === gameForm.gameId) || GAMES[0];
+    let players;
+    let gameRules = { ...rules[selected.id] };
+    if (selected.id === 'truco') {
+      const teamNames = teamSetup.names.map((n, i) => n.trim() || (i === 0 ? 'Nosotros' : 'Ellos'));
+      if (teamNames[0].toLocaleLowerCase() === teamNames[1].toLocaleLowerCase()) { setError('Los dos equipos necesitan nombres diferentes.'); return; }
+      players = teamNames;
+      gameRules.teamMode = true;
+      gameRules.teamMembers = Object.fromEntries(teamNames.map((name, i) => [name, teamSetup.members[i].split(',').map(n => n.trim()).filter(Boolean)]));
+    } else {
+      players = gameForm.players.map(x => x.trim()).filter(Boolean);
+      if (players.length < 2) { setError('Agregá al menos dos jugadores.'); return; }
+      if (new Set(players.map(p => p.toLocaleLowerCase())).size !== players.length) { setError('Cada jugador necesita un nombre diferente para no mezclar los puntajes.'); return; }
+    }
+    setBusy(true); setError('');
+    try {
+      const data = await api('createGame', { groupId: group.id, accessCode: group.accessCode || '', gameId: selected.id, gameName: selected.name, title: gameForm.title.trim() || `${selected.name} — ${new Date().toLocaleDateString('es-AR')}`, players, rules: gameRules });
+      setActiveGame(data.game); setRoundScores(Object.fromEntries(players.map(p => [p, 0]))); setRoundNote(''); setEscobaAwards({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' }); setChinchonPlayer(''); setScreen('play');
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }
+  async function addRound() {
+    if (!activeGame) return;
+    let scores = Object.fromEntries(activeGame.players.map(p => [p.name, Number(roundScores[p.name]) || 0]));
+    let note = roundNote.trim();
+    if (activeGame.gameId === 'escoba') {
+      const awardNames = { masCartas: 'Más cartas', masOros: 'Más oros', sieteOro: 'Siete de oros', masSietes: 'Más sietes' };
+      const escobasByPlayer = { ...scores };
+      Object.entries(escobasByPlayer).forEach(([name, val]) => { if (val) note = [note, `${name}: ${val} escoba(s)`].filter(Boolean).join(' · '); });
+      Object.entries(escobaAwards).forEach(([key, winner]) => { if (winner && Object.hasOwn(scores, winner)) { scores[winner] += 1; note = [note, `${awardNames[key]}: ${winner} (+1)`].filter(Boolean).join(' · '); } });
+    }
+    if (activeGame.gameId === 'chinchon' && chinchonPlayer) {
+      const bonus = Math.abs(Number(activeGame.rules?.chinchonBonus ?? 10));
+      scores[chinchonPlayer] = (scores[chinchonPlayer] || 0) - bonus;
+      note = [note, `Chinchón de ${chinchonPlayer} (-${bonus} puntos)`].filter(Boolean).join(' · ');
+    }
+    if (activeGame.gameId === 'truco' && !Object.values(scores).some(n => n !== 0)) { setError('Sumá o restá tantos antes de guardar el marcador.'); return; }
+    setBusy(true); setError('');
+    try {
+      const data = await api('addRound', { groupId: group.id, accessCode: group.accessCode || '', gameId: activeGame.id, scores, note });
+      setActiveGame(data.game); setRoundScores(Object.fromEntries(activeGame.players.map(p => [p.name, 0]))); setRoundNote(''); setEscobaAwards({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' }); setChinchonPlayer(''); setMessage('Puntajes guardados en Google Sheets.'); setTimeout(() => setMessage(''), 2500);
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }
+  async function finishGame() {
+    if (!activeGame) return;
+    setBusy(true); setError('');
+    try {
+      await api('finishGame', { groupId: group.id, accessCode: group.accessCode || '', gameId: activeGame.id });
+      const data = await api('getGroup', { groupId: group.id, accessCode: group.accessCode || '' });
+      setGroup({ ...data.group, accessCode: group.accessCode || '' }); setHistory(data.games || []); setActiveGame(null); setScreen('group');
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  }
+  async function updateRule(gameId, key, value) {
+    const next = { ...rules, [gameId]: { ...rules[gameId], [key]: value } }; setRules(next);
+    if (group) {
+      try { await api('saveRules', { groupId: group.id, accessCode: group.accessCode || '', rules: next }); }
+      catch (e) { setError(`No se pudieron guardar las reglas: ${e.message}`); }
+    }
+  }
+  const selectedGame = GAMES.find(g => g.id === gameForm.gameId) || GAMES[0];
+  const totals = useMemo(() => {
+    const out = {};
+    (activeGame?.players || []).forEach(p => { out[p.name] = (activeGame.rounds || []).reduce((sum, r) => sum + (Number(r.scores?.[p.name]) || 0), 0); });
+    return out;
+  }, [activeGame]);
+  const ranking = useMemo(() => Object.entries(totals).sort((a,b) => (activeGame?.rules?.direction === 'lower' ? a[1]-b[1] : b[1]-a[1])), [totals, activeGame]);
+  const shownTruco = (name) => (Number(totals[name]) || 0) + (Number(roundScores[name]) || 0);
+  const trucoTarget = Math.max(2, Number(activeGame?.rules?.target) || 30);
+  const trucoSplit = Math.min(trucoTarget - 1, Math.max(1, Number(activeGame?.rules?.splitAt) || Math.floor(trucoTarget / 2)));
+  
+  return <main className="app-shell">
+    <header className="topbar"><button className="brand" onClick={() => { setScreen(group ? 'group' : 'home'); setError(''); }}><span className="brand-mark">✳</span><span>partiditas<small>tu libreta de juegos</small></span></button><span className="top-note">hecho para jugar juntxs <span>♥</span></span></header>
     {error && <div className="alert error" role="alert">{error}<button onClick={() => setError('')} aria-label="Cerrar">×</button></div>}
     {message && <div className="alert success">{message}</div>}
     {busy && <div className="busy"><LoaderCircle size={16} className="spin"/> Guardando…</div>}
