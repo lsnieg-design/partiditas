@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "Partiditas — libreta de juegos",
+  "short_name": "Partiditas",
+  "description": "Registrá partidas y puntajes con tu grupo.",
+  "lang": "es-AR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fbf7ee",
+  "theme_color": "#fbf7ee",
+  "icons": [
+    {
+      "src": "/icons/partiditas-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/partiditas-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/partiditas-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
