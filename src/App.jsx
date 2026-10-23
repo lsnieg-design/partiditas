@@ -11,7 +11,7 @@ const GAMES = [
 ];
 const DEFAULT_RULES = {
   chinchon: { target: 100, direction: 'lower', unit: 'puntos', roundBased: true, chinchonBonus: 10, endAtTarget: true },
-  escoba: { target: 15, direction: 'higher', unit: 'tantos', roundBased: true, scoringMode: 'escoba-15', pointsPerEscoba: 1 },
+  escoba: { target: 15, direction: 'higher', unit: 'tantos', roundBased: true, scoringMode: 'escoba-15', pointsPerEscoba: 1, pointsPerCategory: 1 },
   truco: { target: 30, direction: 'higher', unit: 'tantos', roundBased: true, scoringMode: 'truco-teams', splitAt: 15 },
   rummy: { target: 100, direction: 'lower', unit: 'puntos', roundBased: true, scoringMode: 'card-penalties' },
   libre: { target: 0, direction: 'higher', unit: 'puntos', roundBased: true }
@@ -32,6 +32,9 @@ export default function App() {
   const [gameForm, setGameForm] = useState({ gameId: 'chinchon', players: blankPlayers(), title: '' });
   const [teamSetup, setTeamSetup] = useState({ names: ['Nosotros', 'Ellos'], members: ['', ''] });
   const [rules, setRules] = useState(DEFAULT_RULES);
+  const [ruleGameId, setRuleGameId] = useState('chinchon');
+  const [ruleDraft, setRuleDraft] = useState(null);
+  const [ruleReturnTo, setRuleReturnTo] = useState('rules');
   const [roundNote, setRoundNote] = useState('');
   const [roundScores, setRoundScores] = useState({});
   const [escobaAwards, setEscobaAwards] = useState({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' });
@@ -110,9 +113,19 @@ export default function App() {
     let note = roundNote.trim();
     if (activeGame.gameId === 'escoba') {
       const awardNames = { masCartas: 'Más cartas', masOros: 'Más oros', sieteOro: 'Siete de oros', masSietes: 'Más sietes' };
-      const escobasByPlayer = { ...scores };
-      Object.entries(escobasByPlayer).forEach(([name, val]) => { if (val) note = [note, `${name}: ${val} escoba(s)`].filter(Boolean).join(' · '); });
-      Object.entries(escobaAwards).forEach(([key, winner]) => { if (winner && Object.hasOwn(scores, winner)) { scores[winner] += 1; note = [note, `${awardNames[key]}: ${winner} (+1)`].filter(Boolean).join(' · '); } });
+      const pointsPerEscoba = Math.max(0, Number(activeGame.rules?.pointsPerEscoba ?? 1));
+      const pointsPerCategory = Math.max(0, Number(activeGame.rules?.pointsPerCategory ?? 1));
+      Object.entries(scores).forEach(([name, val]) => {
+        const escobas = Number(val) || 0;
+        if (escobas) note = [note, `${name}: ${escobas} escoba(s)`].filter(Boolean).join(' · ');
+        scores[name] = escobas * pointsPerEscoba;
+      });
+      Object.entries(escobaAwards).forEach(([key, winner]) => {
+        if (winner && Object.hasOwn(scores, winner)) {
+          scores[winner] += pointsPerCategory;
+          note = [note, `${awardNames[key]}: ${winner} (+${pointsPerCategory})`].filter(Boolean).join(' · ');
+        }
+      });
     }
     if (activeGame.gameId === 'chinchon' && chinchonPlayer) {
       const bonus = Math.abs(Number(activeGame.rules?.chinchonBonus ?? 10));
@@ -137,14 +150,36 @@ export default function App() {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
-  async function updateRule(gameId, key, value) {
-    const next = { ...rules, [gameId]: { ...rules[gameId], [key]: value } }; setRules(next);
-    if (group) {
-      try { await api('saveRules', { groupId: group.id, accessCode: group.accessCode || '', rules: next }); }
-      catch (e) { setError(`No se pudieron guardar las reglas: ${e.message}`); }
+  function openRuleEditor(gameId, returnTo = 'rules') {
+    setRuleGameId(gameId);
+    setRuleDraft({ ...(rules[gameId] || DEFAULT_RULES[gameId]) });
+    setRuleReturnTo(returnTo);
+    setError('');
+    setScreen('rule-editor');
+  }
+  function changeRuleDraft(key, value) {
+    setRuleDraft(current => ({ ...(current || rules[ruleGameId] || DEFAULT_RULES[ruleGameId]), [key]: value }));
+  }
+  async function saveRuleEditor() {
+    if (!ruleDraft) return;
+    const next = { ...rules, [ruleGameId]: { ...ruleDraft } };
+    setBusy(true); setError('');
+    try {
+      if (group) await api('saveRules', { groupId: group.id, accessCode: group.accessCode || '', rules: next });
+      setRules(next);
+      const label = GAMES.find(g => g.id === ruleGameId)?.name || 'Juego';
+      setMessage(`Reglas de ${label} guardadas.`);
+      setTimeout(() => setMessage(''), 2600);
+      setScreen(ruleReturnTo === 'newgame' ? 'newgame' : 'rules');
+    } catch (e) {
+      setError(`No se pudieron guardar las reglas: ${e.message}`);
+    } finally {
+      setBusy(false);
     }
   }
   const selectedGame = GAMES.find(g => g.id === gameForm.gameId) || GAMES[0];
+  const ruleGame = GAMES.find(g => g.id === ruleGameId) || GAMES[0];
+  const ruleValues = ruleDraft || rules[ruleGame.id] || DEFAULT_RULES[ruleGame.id];
   const totals = useMemo(() => {
     const out = {};
     (activeGame?.players || []).forEach(p => { out[p.name] = (activeGame.rounds || []).reduce((sum, r) => sum + (Number(r.scores?.[p.name]) || 0), 0); });
@@ -156,19 +191,28 @@ export default function App() {
   const trucoSplit = Math.min(trucoTarget - 1, Math.max(1, Number(activeGame?.rules?.splitAt) || Math.floor(trucoTarget / 2)));
   
   return <main className="app-shell">
-    <header className="topbar"><button className="brand" onClick={() => { setScreen(group ? 'group' : 'home'); setError(''); }}><span className="brand-mark">✳</span><span>partiditas<small>tu libreta de juegos</small></span></button><span className="top-note">hecho para jugar juntxs <span>♥</span></span></header>
+    <header className="topbar"><button className="brand" onClick={() => { setScreen(group ? 'group' : 'home'); setError(''); }}><span className="brand-mark">✳</span><span>partiditas<small>tu libreta de juegos</small></span></button><a className="top-note" href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer">hecho para jugar juntxs por <strong>NÓMADE</strong> <span>♥</span></a></header>
     {error && <div className="alert error" role="alert">{error}<button onClick={() => setError('')} aria-label="Cerrar">×</button></div>}
     {message && <div className="alert success">{message}</div>}
     {busy && <div className="busy"><LoaderCircle size={16} className="spin"/> Guardando…</div>}
 
     {screen === 'home' && <>
       <section className="hero"><div><span className="eyebrow">LA MESA ESTÁ LISTA</span><h1>Una partida más.<br/><em>Y otra también.</em></h1><p>Creá una mesa para tu grupo, anotá los tantos y que la memoria la tenga la app.</p></div><div className="hero-doodle" aria-hidden="true"><div className="doodle-card yellow">¿Quién<br/>va ganando?</div><div className="doodle-card pink">¡Dale<br/>revancha!</div><span>✦</span></div></section>
-      <section className="section-head"><div><span className="eyebrow">EMPEZAR</span><h2>Tus mesas de juego</h2></div><span className="count-pill">{groups.length} {groups.length === 1 ? 'mesa' : 'mesas'}</span></section>
-      <div className="group-grid">{groups.map((g, i) => <button className={`group-card note-${i%4}`} key={g.id} onClick={() => openGroup(g)}><span className="pin">✦</span><span className="card-kicker">MESA DE JUEGO</span><strong>{g.name}</strong><span className="card-bottom"><Users size={15}/> Abrir mesa <span>↗</span></span></button>)}
-        <form className="create-card" onSubmit={createGroup}><div className="plus-bubble"><Plus size={21}/></div><h3>Crear una mesa</h3><p>Un grupo independiente, con su propio historial.</p><label>Nombre del grupo<input required maxLength="60" value={groupForm.name} onChange={e => setGroupForm({ ...groupForm, name: e.target.value })} placeholder="Ej. Los del domingo"/></label><label>Clave de acceso (opcional)<input value={groupForm.accessCode} onChange={e => setGroupForm({ ...groupForm, accessCode: e.target.value })} placeholder="Una clave para esta mesa" autoComplete="new-password"/></label><button className="button primary" disabled={busy}>Crear mesa <span>→</span></button></form>
-      </div>
+      <section className="section-head home-section-head"><div><span className="eyebrow">EMPEZAR</span><h2>Tus mesas de juego</h2><p className="section-subtitle">Cada grupo tiene su propio historial y sus reglas.</p></div><div className="home-section-actions"><span className="count-pill">{groups.length} {groups.length === 1 ? 'mesa' : 'mesas'}</span><button type="button" className="button primary new-table-button" onClick={() => { setGroupForm(blankGroup); setError(''); setScreen('newgroup'); }}><Plus size={17}/> NUEVA MESA</button></div></section>
+      {groups.length ? <div className="group-grid">{groups.map((g, i) => <button className={`group-card note-${i%4}`} key={g.id} onClick={() => openGroup(g)}><span className="pin">✦</span><span className="card-kicker">MESA DE JUEGO</span><strong>{g.name}</strong><span className="card-bottom"><Users size={15}/> Abrir mesa <span>↗</span></span></button>)}</div> : <div className="empty-state home-empty"><span>🗒️</span><strong>Todavía no hay mesas creadas</strong><p>Creá la primera y empezá a guardar sus partidas.</p><button type="button" className="button secondary" onClick={() => setScreen('newgroup')}><Plus size={16}/> Crear la primera mesa</button></div>}
       <form className="join-strip" onSubmit={joinGroup}><div className="join-icon"><Users size={21}/></div><div><strong>¿Te compartieron el ID de una mesa?</strong><p>Ingresalo para abrir su historial.</p></div><input value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="ID de la mesa" required/><input value={joinAccessCode} onChange={e => setJoinAccessCode(e.target.value)} placeholder="Clave (si tiene)"/><button className="button secondary">Entrar</button></form>
       <p className="privacy-note"><NotebookPen size={15}/> Las partidas se guardan en Google Sheets, no en el almacenamiento del navegador.</p>
+    </>}
+
+    {screen === 'newgroup' && <>
+      <button className="back-link" onClick={() => setScreen('home')}><ArrowLeft size={16}/> Volver a mis mesas</button>
+      <section className="form-panel new-group-panel"><span className="eyebrow">UNA MESA PROPIA</span><h1>¿Quiénes se juntan?</h1><p>Creá un espacio para tu grupo. Las partidas y los resultados van a quedar guardados en su propio historial.</p>
+        <form onSubmit={createGroup}>
+          <label>Nombre de la mesa<input required maxLength="60" value={groupForm.name} onChange={e => setGroupForm({ ...groupForm, name: e.target.value })} placeholder="Ej. Los del domingo" autoFocus/></label>
+          <label>Clave de acceso (opcional)<input value={groupForm.accessCode} onChange={e => setGroupForm({ ...groupForm, accessCode: e.target.value })} placeholder="Una clave para compartir solo con tu grupo" autoComplete="new-password"/><small className="field-help">Si agregás una clave, vas a necesitarla para volver a entrar.</small></label>
+          <button className="button primary wide" disabled={busy}><Plus size={17}/> Crear mesa <span>→</span></button>
+        </form>
+      </section>
     </>}
 
     {screen === 'group' && group && <>
@@ -193,7 +237,7 @@ export default function App() {
             <div className="players-head"><label>Jugadores <small>mínimo 2</small></label><button type="button" className="text-button" onClick={addPlayer}><Plus size={15}/> Agregar jugador</button></div>
             <div className="player-fields">{gameForm.players.map((p,i) => <div className="player-field" key={i}><span>{String(i+1).padStart(2,'0')}</span><input value={p} onChange={e => setPlayer(i,e.target.value)} placeholder={`Nombre de jugador/a ${i+1}`} required/><button type="button" title="Quitar jugador" disabled={gameForm.players.length<=2} onClick={() => setGameForm(f => ({ ...f, players: f.players.filter((_,j) => j!==i) }))}>×</button></div>)}</div>
           </>}
-          <div className="rule-summary"><Settings2 size={17}/><span><strong>Reglas actuales:</strong> {rules[selectedGame.id].direction === 'lower' ? 'gana quien acumula menos' : 'gana quien acumula más'}{rules[selectedGame.id].target ? ` · objetivo ${rules[selectedGame.id].target} ${rules[selectedGame.id].unit}` : ''}</span><button type="button" onClick={() => setScreen('rules')}>Editar</button></div>
+          <div className="rule-summary"><Settings2 size={17}/><span><strong>Reglas actuales:</strong> {rules[selectedGame.id].direction === 'lower' ? 'gana quien acumula menos' : 'gana quien acumula más'}{rules[selectedGame.id].target ? ` · objetivo ${rules[selectedGame.id].target} ${rules[selectedGame.id].unit}` : ''}</span><button type="button" onClick={() => openRuleEditor(selectedGame.id, 'newgame')}>Editar reglas</button></div>
           <button className="button primary wide" disabled={busy}>Empezar partida <span>→</span></button>
         </form>
       </section>
@@ -253,21 +297,43 @@ export default function App() {
       </>}
       {(activeGame.rounds || []).length > 0 && <section className="round-history"><h2>Rondas anteriores</h2>{activeGame.rounds.map((r,i) => <div className="round-line" key={r.id || i}><span>Ronda {i+1}{r.note ? ` · ${r.note}` : ''}</span><span>{activeGame.players.map(p => `${p.name}: ${r.scores?.[p.name] ?? 0}`).join('  /  ')}</span></div>)}</section>}
       {activeGame.gameId === 'truco' && activeGame.players.some(p => Number(totals[p.name]) >= trucoTarget) && <div className="alert success">¡El objetivo de tantos se alcanzó! Revisen el marcador y finalicen la partida.</div>}
-      {activeGame.gameId === 'chinchon' && activeGame.players.some(p => Number(totals[p.name]) >= Number(activeGame.rules.target)) && <div className="alert error">Al menos una persona alcanzó el límite de {activeGame.rules.target} puntos. Revisen sus reglas de mesa antes de finalizar.</div>}
+      {activeGame.gameId === 'chinchon' && activeGame.rules?.endAtTarget !== false && activeGame.players.some(p => Number(totals[p.name]) >= Number(activeGame.rules.target)) && <div className="alert error">Al menos una persona alcanzó el límite de {activeGame.rules.target} puntos. Revisen sus reglas de mesa antes de finalizar.</div>}
       <button className="button finish-button" onClick={finishGame} disabled={busy}><Trophy size={17}/> Finalizar partida</button>
     </>}
 
-    {screen === 'rules' && <><button className="back-link" onClick={() => setScreen(group ? 'group' : 'home')}><ArrowLeft size={16}/> Volver</button><section className="form-panel rules-panel"><span className="eyebrow">PERSONALIZÁ</span><h1>Las reglas de la mesa.</h1><p>Los valores iniciales son sugerencias; las reglas de cartas pueden variar entre grupos. Ajustá los objetivos para que coincidan con la forma en que suelen jugar.</p>{GAMES.map(g => <div className="rule-card" key={g.id}><div className="rule-title"><span>{g.emoji}</span><strong>{g.name}</strong></div>
-      <label>¿Cómo se gana?<select value={rules[g.id].direction} onChange={e => updateRule(g.id,'direction',e.target.value)}><option value="higher">Gana el puntaje más alto</option><option value="lower">Gana el puntaje más bajo</option></select></label>
-      <div className="rule-two"><label>{g.id === 'chinchon' || g.id === 'rummy' ? 'Límite de puntos' : g.id === 'truco' ? 'Objetivo del partido' : g.id === 'escoba' ? 'Tantos para ganar' : 'Objetivo (0 = sin objetivo)'}<input type="number" min="0" value={rules[g.id].target} onChange={e => updateRule(g.id,'target',Number(e.target.value))}/></label><label>Nombre del puntaje<input value={rules[g.id].unit} onChange={e => updateRule(g.id,'unit',e.target.value)} placeholder="puntos, tantos…"/></label></div>
-      {g.id === 'chinchon' && <label>Bonus por hacer chinchón (se resta)<input type="number" min="0" value={rules.chinchon.chinchonBonus} onChange={e => updateRule('chinchon','chinchonBonus',Number(e.target.value))}/></label>}
-      {g.id === 'truco' && <label>División entre malas y buenas<input type="number" min="1" max={Math.max(1,Number(rules.truco.target)-1)} value={rules.truco.splitAt} onChange={e => updateRule('truco','splitAt',Math.max(1,Math.min(Number(rules.truco.target)-1,Number(e.target.value)||1)))}/><small className="field-help">Por defecto, 30 tantos se divide en 15 malas y 15 buenas.</small></label>}
-      {g.id === 'escoba' && <p className="rule-explainer">Por defecto suma 1 por cada escoba y 1 por cada categoría: más cartas, más oros, siete de oros y más sietes. Los empates se pueden dejar sin punto.</p>}
-      {g.id === 'rummy' && <p className="rule-explainer">Se anotan los valores de las cartas que quedan en cada mano. La app parte de la variante en la que gana quien menos puntos acumula.</p>}
-      {g.id === 'chinchon' && <p className="rule-explainer">Se suman las penalizaciones de cada mano. Si alguien hace chinchón, podés aplicar el bonus configurable. El cierre y la eliminación dependen de las reglas de la mesa.</p>}
-      {g.id === 'truco' && <p className="rule-explainer">El marcador se lleva por dos equipos. Los botones rápidos suman tantos de 1 a 4; anotá en la nota si fueron envido, real envido, truco, retruco, etc.</p>}
-      {g.id === 'libre' && <p className="rule-explainer">Marcador sin reglas propias: podés sumar o restar cualquier puntaje en cada ronda.</p>}
-      </div>)}<button className="button primary wide" onClick={() => setScreen(group ? 'group' : 'home')}>Listo, volver <span>→</span></button></section></>}
-    <footer><span>✳ partiditas</span><span>Las mejores partidas no se olvidan.</span></footer>
+    {screen === 'rules' && <>
+      <button className="back-link" onClick={() => setScreen(group ? 'group' : 'home')}><ArrowLeft size={16}/> Volver</button>
+      <section className="form-panel rules-panel rules-picker-panel"><span className="eyebrow">AJUSTES DE JUEGO</span><h1>Reglas a tu manera.</h1><p>Elegí un juego para configurar solamente sus reglas. Cada marcador tiene sus propias opciones.</p>
+        <div className="rule-picker-grid">{GAMES.map(g => <button type="button" className={`rule-picker-card ${g.color}`} key={g.id} onClick={() => openRuleEditor(g.id, 'rules')}><span className="rule-picker-emoji">{g.emoji}</span><span className="rule-picker-name">{g.name}</span><span className="rule-picker-description">{g.description}</span><span className="rule-picker-link">Editar reglas <span>↗</span></span></button>)}</div>
+      </section>
+    </>}
+
+    {screen === 'rule-editor' && <>
+      <button className="back-link" onClick={() => setScreen(ruleReturnTo === 'newgame' ? 'newgame' : 'rules')}><ArrowLeft size={16}/> {ruleReturnTo === 'newgame' ? 'Volver a la partida' : 'Volver a los juegos'}</button>
+      <section className="form-panel rules-panel rule-editor-panel"><div className={`rule-editor-hero ${ruleGame.color}`}><span className="rule-editor-emoji">{ruleGame.emoji}</span><span className="eyebrow">EDITOR EXCLUSIVO</span><h1>Reglas de {ruleGame.name}</h1><p>Estos ajustes se aplican a las nuevas partidas de este juego en la mesa {group?.name ? `“${group.name}”` : 'actual'}.</p></div>
+        <div className="rule-card rule-editor-card">
+          <div className="rule-title"><span>{ruleGame.emoji}</span><strong>{ruleGame.name}</strong><span className="saved-note">Cambios pendientes de guardar</span></div>
+          {ruleGame.id !== 'truco' && <label>¿Cómo se gana?<select value={ruleValues.direction} onChange={e => changeRuleDraft('direction', e.target.value)}><option value="higher">Gana el puntaje más alto</option><option value="lower">Gana el puntaje más bajo</option></select></label>}
+          <div className="rule-two"><label>{ruleGame.id === 'chinchon' || ruleGame.id === 'rummy' ? 'Límite de puntos' : ruleGame.id === 'truco' ? 'Objetivo del partido' : ruleGame.id === 'escoba' ? 'Objetivo de tantos' : 'Objetivo (0 = sin objetivo)'}<input type="number" min={ruleGame.id === 'truco' ? 2 : 0} value={ruleValues.target ?? 0} onChange={e => changeRuleDraft('target', Math.max(ruleGame.id === 'truco' ? 2 : 0, Number(e.target.value)))} /></label><label>Nombre del puntaje<input value={ruleValues.unit || ''} onChange={e => changeRuleDraft('unit', e.target.value)} placeholder="puntos, tantos…" maxLength="24"/></label></div>
+          {ruleGame.id === 'chinchon' && <>
+            <label>Bonus por hacer chinchón (se resta)<input type="number" min="0" value={ruleValues.chinchonBonus ?? 10} onChange={e => changeRuleDraft('chinchonBonus', Math.max(0, Number(e.target.value)))}/></label>
+            <label>¿Avisar cuando alguien alcance el límite?<select value={ruleValues.endAtTarget === false ? 'no' : 'yes'} onChange={e => changeRuleDraft('endAtTarget', e.target.value === 'yes')}><option value="yes">Sí, mostrar aviso</option><option value="no">No mostrar aviso</option></select></label>
+            <p className="rule-explainer">La app suma las penalizaciones que ingresás en cada ronda. Si alguien hace chinchón, podés aplicar el bonus configurado.</p>
+          </>}
+          {ruleGame.id === 'escoba' && <>
+            <div className="rule-two"><label>Puntos por cada escoba<input type="number" min="0" max="20" value={ruleValues.pointsPerEscoba ?? 1} onChange={e => changeRuleDraft('pointsPerEscoba', Math.max(0, Number(e.target.value)))}/></label><label>Puntos por categoría<input type="number" min="0" max="20" value={ruleValues.pointsPerCategory ?? 1} onChange={e => changeRuleDraft('pointsPerCategory', Math.max(0, Number(e.target.value)))}/></label></div>
+            <p className="rule-explainer">Las categorías son más cartas, más oros, siete de oros y más sietes. Los empates pueden quedar sin punto. Al cargar una ronda, indicás cuántas escobas consiguió cada jugador.</p>
+          </>}
+          {ruleGame.id === 'truco' && <>
+            <label>División entre malas y buenas<input type="number" min="1" max={Math.max(1, Number(ruleValues.target) - 1)} value={ruleValues.splitAt ?? Math.floor(Number(ruleValues.target || 30) / 2)} onChange={e => changeRuleDraft('splitAt', Math.max(1, Math.min(Math.max(1, Number(ruleValues.target) - 1), Number(e.target.value) || 1)))}/><small className="field-help">Ejemplo: un partido a 30 tantos se divide en 15 malas y 15 buenas.</small></label>
+            <p className="rule-explainer">El marcador se lleva por dos equipos. Los botones rápidos suman de 1 a 4 tantos. Podés anotar en la mano si fueron envido, real envido, truco, retruco o vale cuatro.</p>
+          </>}
+          {ruleGame.id === 'rummy' && <p className="rule-explainer">Esta variante acumula manualmente los valores de las cartas que quedan en la mano. Con “gana el puntaje más bajo”, vence quien acumule menos penalizaciones.</p>}
+          {ruleGame.id === 'libre' && <p className="rule-explainer">Marcador flexible: en cada ronda podés sumar o restar cualquier cantidad. Elegí si gana el puntaje más alto o el más bajo, y dejá el objetivo en 0 si no hay una meta.</p>}
+        </div>
+        <div className="rule-editor-actions"><button type="button" className="button secondary" onClick={() => setScreen(ruleReturnTo === 'newgame' ? 'newgame' : 'rules')}>Cancelar</button><button type="button" className="button primary" onClick={saveRuleEditor} disabled={busy}><Check size={16}/> Guardar reglas</button></div>
+      </section>
+    </>}
+    <footer><span>✳ partiditas</span><a className="footer-nomade" href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer">hecho para jugar juntxs por <strong>NÓMADE</strong> <span>♥</span></a></footer>
   </main>;
 }
