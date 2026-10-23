@@ -1,7 +1,7 @@
 /**
  * PARTIDITAS — backend de Google Apps Script
  * Hojas creadas automáticamente: Groups, Games, Rounds, Rules.
- * IMPORTANTE: este script no reemplaza controles de acceso robustos.
+ * IMPORTANTE: este script no reemplaza controles de acceso robustos. 
  */
 const SHEETS = {
   Groups: ['id','name','accessCodeHash','createdAt','rulesJson'],
