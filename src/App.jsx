@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Users, History, Trophy, Settings2, ArrowLeft, Minus, PlusCircle, NotebookPen, LoaderCircle, Check, Undo2, RotateCcw } from 'lucide-react';
+import { Plus, Users, History, Trophy, Settings2, ArrowLeft, Minus, PlusCircle, NotebookPen, LoaderCircle, Check, Undo2, RotateCcw, Download, Smartphone, Share, X } from 'lucide-react';
 import { api } from './api.js';
 
 const GAMES = [
@@ -43,8 +43,57 @@ export default function App() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
+  const [installTab, setInstallTab] = useState('android');
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
 
   useEffect(() => { refreshGroups(); }, []);
+
+  useEffect(() => {
+    const ua = window.navigator.userAgent || '';
+    const isAppleMobile = /iPhone|iPad|iPod/i.test(ua) || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+    setInstallTab(isAppleMobile ? 'iphone' : 'android');
+
+    const handleBeforeInstallPrompt = (event) => {
+      // Conserva la invitación nativa de Chrome/Android para mostrarla desde el botón.
+      event.preventDefault();
+      setDeferredInstallPrompt(event);
+    };
+    const handleAppInstalled = () => {
+      setDeferredInstallPrompt(null);
+      setShowInstallHelp(false);
+      setMessage('¡Partiditas quedó instalada en tu dispositivo!');
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  function openInstallHelp() {
+    const ua = window.navigator.userAgent || '';
+    const isAppleMobile = /iPhone|iPad|iPod/i.test(ua) || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+    setInstallTab(isAppleMobile ? 'iphone' : 'android');
+    setShowInstallHelp(true);
+  }
+
+  async function installOnAndroid() {
+    if (!deferredInstallPrompt) return;
+    const installPrompt = deferredInstallPrompt;
+    setDeferredInstallPrompt(null);
+    try {
+      await installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      if (choice?.outcome === 'accepted') {
+        setShowInstallHelp(false);
+        setMessage('¡Partiditas se está instalando en tu dispositivo!');
+      }
+    } catch (e) {
+      setError('No se pudo abrir la instalación automática. Seguí los pasos de Chrome para agregar Partiditas a la pantalla de inicio.');
+    }
+  }
   async function refreshGroups() {
     setBusy(true); setError('');
     try { const data = await api('listGroups'); setGroups(data.groups || []); }
@@ -191,7 +240,7 @@ export default function App() {
   const trucoSplit = Math.min(trucoTarget - 1, Math.max(1, Number(activeGame?.rules?.splitAt) || Math.floor(trucoTarget / 2)));
   
   return <main className="app-shell">
-    <header className="topbar"><button className="brand" onClick={() => { setScreen(group ? 'group' : 'home'); setError(''); }}><span className="brand-mark">✳</span><span>partiditas<small>tu libreta de juegos</small></span></button><a className="top-note" href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer">hecho para jugar juntxs por <strong>NÓMADE</strong> <span>♥</span></a></header>
+    <header className="topbar"><button className="brand" onClick={() => { setScreen(group ? 'group' : 'home'); setError(''); }} aria-label="Ir al inicio de Partiditas"><img className="brand-logo" src="/logo.png" alt=""/><span>partiditas<small>tu libreta de juegos</small></span></button><div className="topbar-actions"><button type="button" className="install-cta" onClick={openInstallHelp}><Download size={16}/> DESCARGÁ LA APP</button><a className="top-note" href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer">hecho para jugar juntxs por <strong>NÓMADE</strong> <span>♥</span></a></div></header>
     {error && <div className="alert error" role="alert">{error}<button onClick={() => setError('')} aria-label="Cerrar">×</button></div>}
     {message && <div className="alert success">{message}</div>}
     {busy && <div className="busy"><LoaderCircle size={16} className="spin"/> Guardando…</div>}
@@ -334,6 +383,27 @@ export default function App() {
         <div className="rule-editor-actions"><button type="button" className="button secondary" onClick={() => setScreen(ruleReturnTo === 'newgame' ? 'newgame' : 'rules')}>Cancelar</button><button type="button" className="button primary" onClick={saveRuleEditor} disabled={busy}><Check size={16}/> Guardar reglas</button></div>
       </section>
     </>}
-    <footer><span>✳ partiditas</span><a className="footer-nomade" href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer">hecho para jugar juntxs por <strong>NÓMADE</strong> <span>♥</span></a></footer>
+    {showInstallHelp && <div className="install-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setShowInstallHelp(false); }}>
+      <section className="install-dialog" role="dialog" aria-modal="true" aria-labelledby="install-title">
+        <button className="install-close" type="button" onClick={() => setShowInstallHelp(false)} aria-label="Cerrar instrucciones"><X size={18}/></button>
+        <div className="install-intro"><img src="/logo.png" alt="Logo de Partiditas"/><div><span className="eyebrow">PARTIDITAS EN TU CELULAR</span><h2 id="install-title">Llevá la mesa con vos.</h2><p>Agregá Partiditas a la pantalla de inicio para abrirla como una app.</p></div></div>
+        <div className="install-tabs" role="tablist" aria-label="Elegí tu dispositivo">
+          <button type="button" role="tab" aria-selected={installTab === 'iphone'} className={installTab === 'iphone' ? 'active' : ''} onClick={() => setInstallTab('iphone')}>iPhone / iPad</button>
+          <button type="button" role="tab" aria-selected={installTab === 'android'} className={installTab === 'android' ? 'active' : ''} onClick={() => setInstallTab('android')}>Android</button>
+        </div>
+        {installTab === 'iphone' ? <div className="install-instructions">
+          <p className="install-platform-label"><Smartphone size={17}/> En iPhone o iPad</p>
+          <ol><li>Abrí <strong>{window.location.host}</strong> en <strong>Safari</strong>.</li><li>Tocá el botón <strong>Compartir</strong> <Share size={14} className="inline-install-icon"/> (el cuadrado con la flecha hacia arriba).</li><li>Deslizá las opciones y elegí <strong>Agregar a pantalla de inicio</strong>.</li><li>Confirmá con <strong>Agregar</strong>. Listo: vas a ver el ícono de Partiditas entre tus apps.</li></ol>
+          <p className="install-hint">Si no aparece la opción, asegurate de abrir la web en Safari y no dentro de otra aplicación.</p>
+        </div> : <div className="install-instructions">
+          <p className="install-platform-label"><Smartphone size={17}/> En Android</p>
+          {deferredInstallPrompt && <button type="button" className="button primary wide install-now-button" onClick={installOnAndroid}><Download size={16}/> Instalar ahora</button>}
+          <ol><li>Abrí <strong>{window.location.host}</strong> en <strong>Google Chrome</strong>.</li><li>{deferredInstallPrompt ? <>También podés tocar <strong>Instalar ahora</strong> arriba y aceptar el aviso de Chrome.</> : <>Tocá el menú de los tres puntos <strong>⋮</strong>, arriba a la derecha.</>}</li><li>Elegí <strong>Instalar aplicación</strong> o <strong>Agregar a pantalla principal</strong>. El nombre puede variar según el teléfono.</li><li>Confirmá con <strong>Instalar</strong> o <strong>Agregar</strong>. Después vas a encontrar Partiditas en la pantalla de inicio.</li></ol>
+          {!deferredInstallPrompt && <p className="install-hint">Si Chrome ofrece directamente “Instalar aplicación”, usá esa opción. No hace falta descargar un APK.</p>}
+        </div>}
+        <div className="install-footer-note"><img src="/logo.png" alt=""/><p>Es una aplicación web instalable. Las partidas se siguen guardando en Google Sheets; la instalación no crea una copia de tus partidas en el teléfono.</p></div>
+      </section>
+    </div>}
+    <footer><span className="footer-brand"><img src="/logo.png" alt=""/><span>partiditas</span></span><a className="footer-nomade" href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer">hecho para jugar juntxs por <strong>NÓMADE</strong> <span>♥</span></a></footer>
   </main>;
 }
