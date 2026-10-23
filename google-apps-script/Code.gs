@@ -10,10 +10,10 @@ const SHEETS = {
   Rules: ['groupId','rulesJson','updatedAt']
 };
 const DEFAULT_RULES = {
-  chinchon: { target: 100, direction: 'lower', unit: 'puntos', roundBased: true },
-  escoba: { target: 15, direction: 'higher', unit: 'tantos', roundBased: true },
-  truco: { target: 30, direction: 'higher', unit: 'tantos', roundBased: true },
-  rummy: { target: 100, direction: 'lower', unit: 'puntos', roundBased: true },
+  chinchon: { target: 100, direction: 'lower', unit: 'puntos', roundBased: true, chinchonBonus: 10, endAtTarget: true },
+  escoba: { target: 15, direction: 'higher', unit: 'tantos', roundBased: true, scoringMode: 'escoba-15', pointsPerEscoba: 1 },
+  truco: { target: 30, direction: 'higher', unit: 'tantos', roundBased: true, scoringMode: 'truco-teams', splitAt: 15 },
+  rummy: { target: 100, direction: 'lower', unit: 'puntos', roundBased: true, scoringMode: 'card-penalties' },
   libre: { target: 0, direction: 'higher', unit: 'puntos', roundBased: true }
 };
 
