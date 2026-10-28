@@ -99,15 +99,21 @@ export default function App() {
   const [installTab, setInstallTab] = useState('android');
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
   const [showRoundModal, setShowRoundModal] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showPlayHistory, setShowPlayHistory] = useState(false);
   const [winnerInfo, setWinnerInfo] = useState(null);
 
   useEffect(() => { refreshGroups(); }, []);
 
   useEffect(() => {
-    const modalOpen = showRoundModal || showInstallHelp || Boolean(winnerInfo);
+    const modalOpen = showRoundModal || showInstallHelp || showJoinModal || Boolean(winnerInfo);
     document.body.classList.toggle('modal-open', modalOpen);
-    return () => document.body.classList.remove('modal-open');
-  }, [showRoundModal, showInstallHelp, winnerInfo]);
+    document.body.classList.toggle('game-active', screen === 'play');
+    return () => {
+      document.body.classList.remove('modal-open');
+      document.body.classList.remove('game-active');
+    };
+  }, [showRoundModal, showInstallHelp, showJoinModal, winnerInfo, screen]);
 
   useEffect(() => {
     const ua = window.navigator.userAgent || '';
@@ -268,7 +274,7 @@ export default function App() {
       setGroups(rememberDeviceGroup(joined));
       setHistory(data.games || []);
       setRules(mergeRules(data.group?.rules));
-      setJoinCode(''); setJoinAccessCode(''); setScreen('group');
+      setJoinCode(''); setJoinAccessCode(''); setShowJoinModal(false); setScreen('group');
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
@@ -281,6 +287,7 @@ export default function App() {
     setEscobaAwards({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' });
     setChinchonPlayer('');
     setError('');
+    setShowPlayHistory(false);
     setScreen('play');
   }
   function addPlayer() { setGameForm(f => ({ ...f, players: [...f.players, ''] })); }
@@ -308,7 +315,7 @@ export default function App() {
     setBusy(true); setError('');
     try {
       const data = await api('createGame', { groupId: group.id, accessCode: group.accessCode || '', gameId: selected.id, gameName: selected.name, title: gameForm.title.trim() || `${selected.name} — ${new Date().toLocaleDateString('es-AR')}`, players, rules: gameRules });
-      setActiveGame(data.game); setRoundScores(Object.fromEntries(players.map(p => [p, 0]))); setRoundNote(''); setEscobaAwards({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' }); setChinchonPlayer(''); setScreen('play');
+      setActiveGame(data.game); setRoundScores(Object.fromEntries(players.map(p => [p, 0]))); setRoundNote(''); setEscobaAwards({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' }); setChinchonPlayer(''); setShowPlayHistory(false); setScreen('play');
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
@@ -468,15 +475,15 @@ export default function App() {
   const trucoTarget = Math.max(2, Number(activeGame?.rules?.target) || 30);
   const trucoSplit = Math.min(trucoTarget - 1, Math.max(1, Number(activeGame?.rules?.splitAt) || Math.floor(trucoTarget / 2)));
   
-  return <main className="app-shell">
-    <header className="topbar"><button className="brand" onClick={() => { setScreen(group ? 'group' : 'home'); setError(''); }} aria-label="Ir al inicio de Partiditas"><img className="brand-logo" src="/logo.png" alt=""/><span>partiditas<small>tu libreta de juegos</small></span></button><div className="topbar-actions"><button type="button" className="install-cta" onClick={openInstallHelp}><Download size={16}/> DESCARGÁ LA APP</button><a className="top-note" href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer">hecho para jugar juntxs por <strong>NÓMADE</strong> <span>♥</span></a></div></header>
-    {error && <div className="alert error" role="alert">{error}<button onClick={() => setError('')} aria-label="Cerrar">×</button></div>}
-    {message && <div className="alert success">{message}</div>}
+  return <main className={`app-shell ${screen === 'play' ? 'app-shell-play' : ''}`}>
+    {screen !== 'play' && <header className="topbar"><button className="brand" onClick={() => { setScreen(group ? 'group' : 'home'); setError(''); }} aria-label="Ir al inicio de Partiditas"><img className="brand-logo" src="/logo.png" alt=""/><span>partiditas<small>tu libreta de juegos</small></span></button><div className="topbar-actions"><button type="button" className="install-cta" onClick={openInstallHelp}><Download size={16}/> DESCARGÁ LA APP</button><a className="top-note" href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer">hecho para jugar juntxs por <strong>NÓMADE</strong> <span>♥</span></a></div></header>}
+    {error && <div className={`alert error ${screen === 'play' ? 'play-toast' : ''}`} role="alert">{error}<button onClick={() => setError('')} aria-label="Cerrar">×</button></div>}
+    {message && <div className={`alert success ${screen === 'play' ? 'play-toast' : ''}`}>{message}</div>}
     {busy && <div className="busy"><LoaderCircle size={16} className="spin"/> Guardando…</div>}
 
     {screen === 'home' && <>
-      <section className="hero home-hero-compact"><div><span className="eyebrow">LA MESA ESTÁ LISTA</span><h1>¿Quién juega?</h1><p>Tus mesas y puntajes.</p></div><div className="hero-doodle compact-doodles" aria-hidden="true"><div className="doodle-card yellow">A jugar</div><div className="doodle-card pink">¡Dale!</div><span>✦</span></div></section>
-      <section className="section-head home-section-head"><div><span className="eyebrow">EMPEZAR</span><h2>Tus mesas de juego</h2><p className="section-subtitle">Cada grupo tiene su propio historial y sus reglas.</p></div><div className="home-section-actions"><span className="count-pill">{groups.length} {groups.length === 1 ? 'mesa' : 'mesas'}</span><button type="button" className="button primary new-table-button" onClick={() => { setGroupForm(blankGroup); setError(''); setScreen('newgroup'); }}><Plus size={17}/> NUEVA MESA</button></div></section>
+      <section className="hero home-hero-compact"><div><h1>Mis mesas</h1><p>Volvé a jugar en un toque.</p></div></section>
+      <section className="section-head home-section-head"><div><h2>Tus mesas</h2><p className="section-subtitle">Tus grupos, siempre a mano.</p></div><div className="home-section-actions"><span className="count-pill">{groups.length} {groups.length === 1 ? 'mesa' : 'mesas'}</span><button type="button" className="button primary new-table-button" onClick={() => { setGroupForm(blankGroup); setError(''); setScreen('newgroup'); }}><Plus size={17}/> NUEVA MESA</button></div></section>
       {groups.length ? <div className="group-grid">{groups.map((g, i) => <article className={`group-card note-${i%4}`} key={g.id}>
         <button type="button" className="group-card-open" onClick={() => openGroup(g)} aria-label={`Abrir mesa ${g.name}`} disabled={busy}>
           <span className="pin">✦</span><span className="card-kicker">MESA DE JUEGO</span><strong>{g.name}</strong><span className="card-bottom"><Users size={15}/> Abrir mesa <span>↗</span></span>
@@ -486,8 +493,8 @@ export default function App() {
           <button type="button" className="delete-group-action" onClick={() => removeGroupFromDevice(g)} title={`Quitar ${g.name} de este dispositivo`} aria-label={`Quitar ${g.name} de este dispositivo`} disabled={busy}><X size={14}/></button>
         </div>
       </article>)}</div> : <div className="empty-state home-empty"><span>🗒️</span><strong>Este dispositivo todavía no tiene mesas guardadas</strong><p>Creá una nueva o sumate con el ID y la clave de una mesa existente.</p><button type="button" className="button secondary" onClick={() => setScreen('newgroup')}><Plus size={16}/> Nueva mesa</button></div>}
-      <form className="join-strip" onSubmit={joinGroup}><div className="join-icon"><Users size={21}/></div><div><strong>¿Te compartieron el ID de una mesa?</strong><p>Ingresalo para abrir su historial.</p></div><input value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="Código o ID de la mesa" required autoComplete="off"/><input value={joinAccessCode} onChange={e => setJoinAccessCode(e.target.value)} placeholder="Clave privada" required autoComplete="current-password"/><button className="button secondary">Entrar</button></form>
-      <p className="privacy-note"><NotebookPen size={15}/> Tu lista de mesas se recuerda en este dispositivo. El historial y los puntajes quedan guardados en Google Sheets.</p>
+      <button type="button" className="join-trigger" onClick={() => { setError(''); setShowJoinModal(true); }}><span className="join-trigger-icon"><Users size={21}/></span><span><strong>Sumarme a una mesa</strong><small>Ingresá el código que te compartieron</small></span><ArrowLeft className="join-trigger-arrow" size={18}/></button>
+      <p className="privacy-note"><NotebookPen size={15}/> Tus mesas se recuerdan en este dispositivo.</p>
     </>}
 
     {screen === 'newgroup' && <>
@@ -572,9 +579,11 @@ export default function App() {
           </>}
 
           {activeGame.gameId !== 'truco' && activeGame.gameId === 'chinchon' && activeGame.rules?.endAtTarget !== false && activeGame.players.some(p => Number(totals[p.name]) >= Number(activeGame.rules?.target)) && <div className="mobile-notice">Alguien alcanzó el límite de puntos. Revisá el marcador antes de cerrar.</div>}
-          <section className="mobile-history">
-            <div className="mobile-history-heading"><h3>Jugadas</h3><span>{(activeGame.rounds || []).length}</span></div>
-            {(activeGame.rounds || []).length ? [...activeGame.rounds].reverse().slice(0, 5).map((r, i) => <div className="mobile-history-row" key={r.id || i}><div className="round-number-badge">{r.roundNumber || activeGame.rounds.length - i}</div><div className="mobile-history-text"><strong>{r.note || `Ronda ${r.roundNumber || activeGame.rounds.length - i}`}</strong><small>{activeGame.players.map(p => `${p.name}: ${r.scores?.[p.name] ?? 0}`).join(' · ')}</small></div></div>) : <p className="mobile-empty-history">Todavía no hay jugadas guardadas.</p>}
+          <section className={`mobile-history ${showPlayHistory ? 'is-open' : ''}`}>
+            <button type="button" className="mobile-history-heading" onClick={() => setShowPlayHistory(value => !value)} aria-expanded={showPlayHistory}>
+              <h3>Jugadas anteriores</h3><span>{(activeGame.rounds || []).length}</span><span className="history-chevron">{showPlayHistory ? '−' : '+'}</span>
+            </button>
+            {showPlayHistory && ((activeGame.rounds || []).length ? [...activeGame.rounds].reverse().map((r, i) => <div className="mobile-history-row" key={r.id || i}><div className="round-number-badge">{r.roundNumber || activeGame.rounds.length - i}</div><div className="mobile-history-text"><strong>{r.note || `Ronda ${r.roundNumber || activeGame.rounds.length - i}`}</strong><small>{activeGame.players.map(p => `${p.name}: ${r.scores?.[p.name] ?? 0}`).join(' · ')}</small></div></div>) : <p className="mobile-empty-history">Todavía no hay jugadas guardadas.</p>)}
           </section>
         </div>
         <div className="mobile-play-bottom">
@@ -663,6 +672,7 @@ export default function App() {
         <div className="install-footer-note"><img src="/logo.png" alt=""/><p>Es una aplicación web instalable. Las partidas se siguen guardando en Google Sheets; la instalación no crea una copia de tus partidas en el teléfono.</p></div>
       </section>
     </div>}
-    <footer><span className="footer-brand"><img src="/logo.png" alt=""/><span>partiditas</span></span><a className="footer-nomade" href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer">hecho para jugar juntxs por <strong>NÓMADE</strong> <span>♥</span></a></footer>
+    {screen !== 'play' && <footer><span className="footer-brand"><img src="/logo.png" alt=""/><span>partiditas</span></span><a className="footer-nomade" href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer">hecho para jugar juntxs por <strong>NÓMADE</strong> <span>♥</span></a></footer>}
+    {showJoinModal && <div className="mobile-modal-backdrop join-modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setShowJoinModal(false); }}><section className="mobile-round-modal join-modal" role="dialog" aria-modal="true" aria-labelledby="join-modal-title"><div className="mobile-modal-grabber"/><div className="mobile-modal-head"><div><span className="eyebrow">ENTRAR A UN GRUPO</span><h2 id="join-modal-title">Sumarme a una mesa</h2><p>Usá el ID y la clave que te compartieron.</p></div><button type="button" className="modal-x" onClick={() => setShowJoinModal(false)} aria-label="Cerrar">×</button></div><form onSubmit={joinGroup} className="join-modal-form"><label className="mobile-modal-label">Código o ID de la mesa<input value={joinCode} onChange={e => setJoinCode(e.target.value)} required autoComplete="off" placeholder="Pegá el ID"/></label><label className="mobile-modal-label">Clave privada<input value={joinAccessCode} onChange={e => setJoinAccessCode(e.target.value)} required autoComplete="current-password" placeholder="Clave de la mesa"/></label><button className="mobile-primary-action" disabled={busy}><Users size={17}/> Entrar a la mesa</button></form></section></div>)}
   </main>;
 }
