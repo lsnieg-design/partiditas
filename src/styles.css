@@ -255,3 +255,93 @@ button { touch-action: manipulation; }
 @media (prefers-reduced-motion: reduce) {
   .winner-card, .winner-sparkle, .winner-trophy, .confetti-layer i { animation: none !important; }
 }
+
+
+/* Partiditas v0.8 — privacidad local, reanudar partidas y experiencia móvil compacta */
+.home-hero-compact { min-height: 0 !important; margin: 13px 0 17px !important; padding: 20px 22px !important; grid-template-columns: minmax(0,1fr) auto !important; gap: 12px !important; }
+.home-hero-compact h1 { margin: 8px 0 8px !important; font-size: clamp(27px,3.2vw,38px) !important; line-height: 1.02 !important; }
+.home-hero-compact p { margin: 0 !important; max-width: 38rem; font-size: 13px !important; line-height: 1.45 !important; }
+.compact-doodles { width: 136px !important; height: 98px !important; transform: scale(.86); transform-origin: right center; }
+.compact-doodles .doodle-card { font-size: 12px !important; padding: 9px 11px !important; }
+.home-section-head { margin-top: 10px !important; margin-bottom: 12px !important; }
+.home-section-head h2 { margin-bottom: 2px !important; }
+.home-section-head .section-subtitle { margin: 4px 0 0 !important; font-size: 12px !important; line-height: 1.4 !important; }
+.home-section-actions { display: flex; align-items: center; gap: 9px; }
+.new-table-button { white-space: nowrap; min-height: 43px; }
+.privacy-note { font-size: 12px !important; line-height: 1.5 !important; }
+.join-strip input { min-height: 45px; font-size: 16px !important; }
+.history-item-open { align-items: center; }
+.resume-game-button { border: 0; border-radius: 10px; background: #456342; color: #fffdf7; padding: 10px 12px; font-size: 12px; font-weight: 850; white-space: nowrap; }
+.resume-game-button:disabled { opacity: .5; }
+.tally-bundles-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.tally-bundle { min-width: 0; min-height: 68px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 5px 4px 4px; border: 1.5px solid #d8d2c5; border-radius: 11px; background: #fffdf8; color: #8d8a7f; touch-action: manipulation; transition: background .12s,border-color .12s,transform .12s; }
+.tally-bundle:active:not(:disabled) { transform: scale(.96); }
+.tally-bundle:not(:disabled) { cursor: pointer; border-color: #8da47e; box-shadow: inset 0 0 0 1px #8da47e18; }
+.tally-bundle:disabled { opacity: 1; cursor: default; }
+.tally-bundle.is-full { color: #3f6238; border-color: #b7c9ab; background: #e8f1df; }
+.tally-bundle-svg { display: block; width: 100%; height: 37px; max-width: 92px; overflow: visible; }
+.tally-stroke { fill: none; stroke: #d8d4ca; stroke-width: 3.2; stroke-linecap: round; transition: stroke .1s; }
+.tally-stroke.on { stroke: currentColor; }
+.tally-stroke.diagonal { stroke-width: 3.6; }
+.tally-bundle span { font-size: 10px; font-weight: 850; font-variant-numeric: tabular-nums; }
+.tally-section-mobile { min-width: 0; }
+.tally-section-mobile .tally-label-row { font-size: 12px !important; margin-bottom: 10px !important; }
+.tap-hint { font-size: 12px !important; line-height: 1.4 !important; }
+.team-score-actions button { min-height: 43px !important; font-size: 14px !important; }
+
+@media (max-width: 640px) {
+  .app-shell { padding-left: 12px !important; padding-right: 12px !important; }
+  .hero.home-hero-compact { padding: 13px 14px !important; margin: 8px 0 12px !important; grid-template-columns: minmax(0,1fr) auto !important; border-radius: 14px !important; }
+  .home-hero-compact .eyebrow { font-size: 9px !important; letter-spacing: .1em !important; }
+  .home-hero-compact h1 { font-size: 22px !important; line-height: 1.02 !important; margin: 6px 0 !important; }
+  .home-hero-compact p { max-width: 240px; font-size: 11px !important; line-height: 1.35 !important; }
+  .compact-doodles { width: 78px !important; height: 70px !important; transform: scale(.62); transform-origin: right center; margin-left: -12px; }
+  .compact-doodles .doodle-card { font-size: 10px !important; padding: 7px 8px !important; }
+  .home-section-head { align-items: center !important; gap: 8px !important; margin: 7px 0 10px !important; }
+  .home-section-head .eyebrow { font-size: 8px !important; }
+  .home-section-head h2 { font-size: 18px !important; line-height: 1.15 !important; margin: 4px 0 0 !important; }
+  .home-section-head .section-subtitle { display: none !important; }
+  .home-section-actions .count-pill { display: none !important; }
+  .new-table-button { min-height: 39px !important; padding: 9px 10px !important; font-size: 10px !important; }
+  .group-grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 9px !important; }
+  .group-card-open { min-height: 112px !important; padding: 12px !important; }
+  .group-card-open strong { font-size: 15px !important; line-height: 1.15 !important; margin: 8px 0 17px !important; overflow-wrap: anywhere; }
+  .group-card-open .card-kicker { font-size: 8px !important; }
+  .group-card-open .card-bottom { font-size: 10px !important; gap: 5px !important; }
+  .group-card-actions { top: 5px !important; right: 5px !important; }
+  .group-card-actions button { width: 26px !important; height: 26px !important; }
+  .join-strip { margin-top: 13px !important; padding: 13px !important; grid-template-columns: minmax(0,1fr) !important; gap: 8px !important; }
+  .join-strip > div:nth-child(2) strong { font-size: 14px !important; }
+  .join-strip > div:nth-child(2) p { font-size: 12px !important; }
+  .join-strip .button { width: 100%; min-height: 46px; }
+  .privacy-note { font-size: 11px !important; margin-top: 10px !important; }
+  .history-item { display: grid; grid-template-columns: 36px minmax(0,1fr); gap: 9px !important; align-items: start !important; }
+  .history-score { grid-column: 2; justify-self: start; margin-top: 2px; }
+  .resume-game-button { padding: 9px 13px; font-size: 13px; }
+  .tally-bundles-grid { gap: 6px; }
+  .tally-bundle { min-height: 62px; padding: 4px 2px; border-radius: 9px; }
+  .tally-bundle-svg { height: 33px; }
+  .tally-bundle span { font-size: 10px; }
+  .tally-section-mobile .tally-label-row { font-size: 13px !important; }
+  .truco-team-head h2 { font-size: 19px !important; }
+  .mobile-play-content { padding-bottom: 10px !important; }
+}
+@media (max-width: 370px) {
+  .compact-doodles { display: none !important; }
+  .hero.home-hero-compact { grid-template-columns: minmax(0,1fr) !important; }
+  .group-grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .group-card-open { min-height: 105px !important; }
+}
+
+
+.group-share-details { display: grid; gap: 8px; margin-top: 12px; max-width: 670px; }
+.group-share-details .group-id { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; }
+.group-share-details .group-id > span { color: var(--app-muted); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.group-share-details .group-id code { min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.group-share-details .group-id button { min-height: 36px; padding: 7px 10px; border: 1px solid var(--app-line); border-radius: 9px; background: #fffdf8; color: var(--app-green-dark); font-size: 11px; font-weight: 800; }
+@media(max-width:640px){
+ .group-share-details .group-id { grid-template-columns: minmax(0,1fr) auto; }
+ .group-share-details .group-id > span { grid-column: 1 / -1; }
+ .group-share-details .group-id code { font-size: 10px; }
+ .group-share-details .group-id button { font-size: 10px; padding: 6px 8px; }
+}
