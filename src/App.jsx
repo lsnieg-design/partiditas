@@ -475,7 +475,7 @@ export default function App() {
     {busy && <div className="busy"><LoaderCircle size={16} className="spin"/> Guardando…</div>}
 
     {screen === 'home' && <>
-      <section className="hero home-hero-compact"><div><span className="eyebrow">LA MESA ESTÁ LISTA</span><h1>Una partida más.<br/><em>Y otra también.</em></h1><p>Tus mesas, sus puntajes y la revancha, todo en un solo lugar.</p></div><div className="hero-doodle compact-doodles" aria-hidden="true"><div className="doodle-card yellow">¿Quién gana?</div><div className="doodle-card pink">¡Revancha!</div><span>✦</span></div></section>
+      <section className="hero home-hero-compact"><div><span className="eyebrow">LA MESA ESTÁ LISTA</span><h1>¿Quién juega?</h1><p>Tus mesas y puntajes.</p></div><div className="hero-doodle compact-doodles" aria-hidden="true"><div className="doodle-card yellow">A jugar</div><div className="doodle-card pink">¡Dale!</div><span>✦</span></div></section>
       <section className="section-head home-section-head"><div><span className="eyebrow">EMPEZAR</span><h2>Tus mesas de juego</h2><p className="section-subtitle">Cada grupo tiene su propio historial y sus reglas.</p></div><div className="home-section-actions"><span className="count-pill">{groups.length} {groups.length === 1 ? 'mesa' : 'mesas'}</span><button type="button" className="button primary new-table-button" onClick={() => { setGroupForm(blankGroup); setError(''); setScreen('newgroup'); }}><Plus size={17}/> NUEVA MESA</button></div></section>
       {groups.length ? <div className="group-grid">{groups.map((g, i) => <article className={`group-card note-${i%4}`} key={g.id}>
         <button type="button" className="group-card-open" onClick={() => openGroup(g)} aria-label={`Abrir mesa ${g.name}`} disabled={busy}>
@@ -540,7 +540,7 @@ export default function App() {
         <div className="mobile-play-content">
           {activeGame.gameId === 'truco' ? <>
             <div className="mobile-match-meta"><span>PARTIDO A {trucoTarget}</span><span>{(activeGame.rounds || []).length} manos guardadas</span></div>
-            <div className="truco-tap-instruction">Tocá el bloque activo para sumar un tanto. Cada 5 tantos se completa un grupo de cuatro líneas y una diagonal.</div>
+            <div className="truco-tap-instruction">Tocá el lado del equipo para sumar 1 tanto. Cada grupo se completa con 5 rayas; al llegar a 15 pasan a las buenas.</div>
             <div className="truco-mobile-teams">
               {activeGame.players.map((p, i) => {
                 const score = Math.max(0, Math.min(trucoTarget, shownTruco(p.name)));
@@ -548,7 +548,7 @@ export default function App() {
                 const buenas = Math.max(0, score - trucoSplit);
                 const remainingSlots = trucoTarget - trucoSplit;
                 const won = score >= trucoTarget;
-                return <section className={`truco-mobile-team ${i === 0 ? 'team-mint' : 'team-rose'} ${won ? 'team-winner' : ''}`} key={p.id || p.name}>
+                return <section className={`truco-mobile-team ${i === 0 ? 'team-mint' : 'team-rose'} ${won ? 'team-winner' : ''}`} key={p.id || p.name} onClick={(event) => { if (event.target.closest("button")) return; if (!busy && !won && score < trucoTarget) setTrucoScoreAt(p.name, score + 1); }} role="button" tabIndex={0} aria-label={`Sumar un tanto a ${p.name}`} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && !busy && !won && score < trucoTarget) { event.preventDefault(); setTrucoScoreAt(p.name, score + 1); } }}>
                   <div className="truco-team-head"><div><span className="team-kicker">EQUIPO {i + 1}</span><h2>{p.name}</h2>{activeGame.rules?.teamMembers?.[p.name]?.length > 0 && <p>{activeGame.rules.teamMembers[p.name].join(' · ')}</p>}</div><div className="truco-score-bubble"><strong>{score}</strong><small>/{trucoTarget}</small></div></div>
                   <div className="tally-touch-area">
                     <div className="tally-section-mobile"><div className="tally-label-row"><span>MALAS</span><strong>{malas}<small>/{trucoSplit}</small></strong></div><div className="tally-bundles-grid">{Array.from({ length: Math.ceil(trucoSplit / 5) }, (_, n) => { const fill = Math.min(5, Math.max(0, malas - n * 5)); const blockEnd = Math.min((n + 1) * 5, trucoSplit); const canTap = !busy && !won && score < trucoSplit && score >= n * 5 && score < blockEnd; return <TallyBundle key={n} fill={fill} disabled={!canTap} onClick={() => setTrucoScoreAt(p.name, Math.min(trucoTarget, score + 1))} label={`Malas, bloque ${n + 1}: ${fill} de 5. Tocá para sumar el siguiente tanto.`} />; })}</div></div>
