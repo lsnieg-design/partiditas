@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Users, History, Trophy, Settings2, ArrowLeft, Minus, PlusCircle, NotebookPen, LoaderCircle, Check, Undo2, RotateCcw, Download, Smartphone, Share, X, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Users, Trophy, Settings2, ArrowLeft, PlusCircle, NotebookPen, LoaderCircle, Check, Download, Smartphone, Share, X, Pencil, Trash2 } from 'lucide-react';
 import { api } from './api.js';
 
 const GAMES = [
@@ -46,8 +46,16 @@ export default function App() {
   const [showInstallHelp, setShowInstallHelp] = useState(false);
   const [installTab, setInstallTab] = useState('android');
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState(null);
+  const [showRoundModal, setShowRoundModal] = useState(false);
+  const [winnerInfo, setWinnerInfo] = useState(null);
 
   useEffect(() => { refreshGroups(); }, []);
+
+  useEffect(() => {
+    const modalOpen = showRoundModal || showInstallHelp || Boolean(winnerInfo);
+    document.body.classList.toggle('modal-open', modalOpen);
+    return () => document.body.classList.remove('modal-open');
+  }, [showRoundModal, showInstallHelp, winnerInfo]);
 
   useEffect(() => {
     const ua = window.navigator.userAgent || '';
@@ -262,20 +270,93 @@ export default function App() {
     setBusy(true); setError('');
     try {
       const data = await api('addRound', { groupId: group.id, accessCode: group.accessCode || '', gameId: activeGame.id, scores, note });
-      setActiveGame(data.game); setRoundScores(Object.fromEntries(activeGame.players.map(p => [p.name, 0]))); setRoundNote(''); setEscobaAwards({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' }); setChinchonPlayer(''); setMessage('Puntajes guardados en Google Sheets.'); setTimeout(() => setMessage(''), 2500);
+      setActiveGame(data.game); setRoundScores(Object.fromEntries(activeGame.players.map(p => [p.name, 0]))); setRoundNote(''); setEscobaAwards({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' }); setChinchonPlayer(''); setShowRoundModal(false);
+      const savedTotals = Object.fromEntries(activeGame.players.map(p => [p.name, (data.game.rounds || []).reduce((sum, r) => sum + (Number(r.scores?.[p.name]) || 0), 0)]));
+      const target = Math.max(0, Number(activeGame.rules?.target) || 0);
+      const autoWinnerReached = target > 0 && (
+        (activeGame.gameId === 'truco' && activeGame.players.some(p => savedTotals[p.name] >= target)) ||
+        (activeGame.gameId === 'escoba' && activeGame.players.some(p => savedTotals[p.name] >= target))
+      );
+      if (autoWinnerReached) {
+        await finishAndCelebrate(data.game, savedTotals);
+        return;
+      }
+      setMessage('¡Jugada guardada!'); setTimeout(() => setMessage(''), 2200);
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
-  async function finishGame() {
-    if (!activeGame) return;
+  async function finishAndCelebrate(gameToFinish = activeGame, totalsOverride = null) {
+    if (!gameToFinish || !group) return;
     setBusy(true); setError('');
     try {
-      await api('finishGame', { groupId: group.id, accessCode: group.accessCode || '', gameId: activeGame.id });
+      await api('finishGame', { groupId: group.id, accessCode: group.accessCode || '', gameId: gameToFinish.id });
       const data = await api('getGroup', { groupId: group.id, accessCode: group.accessCode || '' });
-      setGroup({ ...data.group, accessCode: group.accessCode || '' }); setHistory(data.games || []); setActiveGame(null); setScreen('group');
-    } catch (e) { setError(e.message); }
-    finally { setBusy(false); }
+      const finished = (data.games || []).find(g => g.id === gameToFinish.id) || gameToFinish;
+      const totalsFinal = totalsOverride || Object.fromEntries((finished.players || []).map(p => [p.name, (finished.rounds || []).reduce((sum, r) => sum + (Number(r.scores?.[p.name]) || 0), 0)]));
+      const entries = Object.entries(totalsFinal);
+      const direction = finished.rules?.direction || 'higher';
+      entries.sort((a, b) => direction === 'lower' ? a[1] - b[1] : b[1] - a[1]);
+      const winnerName = finished.winner || entries[0]?.[0] || '¡Gran partida!';
+      setGroup({ ...data.group, accessCode: group.accessCode || '' });
+      setHistory(data.games || []);
+      setActiveGame(null);
+      setScreen('group');
+      setWinnerInfo({
+        winner: winnerName,
+        gameName: finished.gameName || gameToFinish.gameName,
+        title: finished.title || gameToFinish.title,
+        totals: totalsFinal,
+        players: finished.players || gameToFinish.players || [],
+        ties: entries.length > 1 && entries[0][1] === entries[1][1],
+        direction
+      });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
+
+  async function finishGame() {
+    if (!activeGame) return;
+    if (activeGame.gameId === 'truco' && Object.values(roundScores).some(n => Number(n) !== 0)) {
+      setError('Primero guardá los tantos pendientes de esta mano.');
+      return;
+    }
+    await finishAndCelebrate(activeGame);
+  }
+
+  function openRoundModal() {
+    if (!activeGame) return;
+    if (activeGame.gameId !== 'truco') {
+      setRoundScores(Object.fromEntries(activeGame.players.map(p => [p.name, 0])));
+      setRoundNote('');
+      setEscobaAwards({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' });
+      setChinchonPlayer('');
+    }
+    setError('');
+    setShowRoundModal(true);
+  }
+
+  function cancelRoundModal() {
+    setShowRoundModal(false);
+    setError('');
+    if (activeGame && activeGame.gameId === 'truco') {
+      setRoundNote('');
+    } else if (activeGame) {
+      setRoundScores(Object.fromEntries(activeGame.players.map(p => [p.name, 0])));
+      setRoundNote('');
+      setEscobaAwards({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' });
+      setChinchonPlayer('');
+    }
+  }
+
+  function setTrucoScoreAt(playerName, requestedScore) {
+    const persisted = Number(totals[playerName]) || 0;
+    const next = Math.max(persisted, Math.min(trucoTarget, requestedScore));
+    setRoundScores(current => ({ ...current, [playerName]: Math.max(0, next - persisted) }));
+  }
+
   function openRuleEditor(gameId, returnTo = 'rules') {
     setRuleGameId(gameId);
     setRuleDraft({ ...(rules[gameId] || DEFAULT_RULES[gameId]) });
@@ -342,7 +423,7 @@ export default function App() {
       <button className="back-link" onClick={() => setScreen('home')}><ArrowLeft size={16}/> Volver a mis mesas</button>
       <section className="form-panel new-group-panel"><span className="eyebrow">UNA MESA PROPIA</span><h1>¿Quiénes se juntan?</h1><p>Creá un espacio para tu grupo. Las partidas y los resultados van a quedar guardados en su propio historial.</p>
         <form onSubmit={createGroup}>
-          <label>Nombre de la mesa<input required maxLength="60" value={groupForm.name} onChange={e => setGroupForm({ ...groupForm, name: e.target.value })} placeholder="Ej. Los del domingo" autoFocus/></label>
+          <label>Nombre de la mesa<input required maxLength="60" value={groupForm.name} onChange={e => setGroupForm({ ...groupForm, name: e.target.value })} placeholder="Ej. Los del domingo"/></label>
           <label>Clave de acceso (opcional)<input value={groupForm.accessCode} onChange={e => setGroupForm({ ...groupForm, accessCode: e.target.value })} placeholder="Una clave para compartir solo con tu grupo" autoComplete="new-password"/><small className="field-help">Si agregás una clave, vas a necesitarla para volver a entrar.</small></label>
           <button className="button primary wide" disabled={busy}><Plus size={17}/> Crear mesa <span>→</span></button>
         </form>
@@ -378,61 +459,58 @@ export default function App() {
     </>}
 
     {screen === 'play' && activeGame && <>
-      <button className="back-link" onClick={() => setScreen('group')}><ArrowLeft size={16}/> Volver a la mesa</button>
-      <section className="play-heading"><span className="eyebrow">PARTIDA EN CURSO · {activeGame.gameName}</span><h1>{activeGame.title}</h1><p>{activeGame.gameId === 'truco' ? 'Tocá los tantos del equipo y guardá el marcador al terminar la mano.' : activeGame.gameId === 'escoba' ? 'Anotá las escobas y quién se lleva cada categoría de la mano.' : activeGame.gameId === 'chinchon' ? 'Anotá los puntos que suma cada persona en la mano. El puntaje más bajo conviene.' : activeGame.gameId === 'rummy' ? 'Anotá los puntos de las cartas que quedan en la mano de cada persona.' : 'Cargá los puntos que suma o resta cada participante.'}</p></section>
+      <section className="mobile-play-screen">
+        <div className="mobile-play-top">
+          <button className="mini-back" type="button" onClick={() => { if (activeGame.gameId === 'truco' && Object.values(roundScores).some(n => Number(n) !== 0)) { setError('Guardá los tantos pendientes antes de salir de la partida.'); return; } setScreen('group'); }}><ArrowLeft size={17}/><span>Mesa</span></button>
+          <div className="mobile-play-title"><span className="eyebrow">{activeGame.gameName}</span><strong>{activeGame.title}</strong></div>
+          <button className="mini-finish" type="button" onClick={finishGame} disabled={busy}><Trophy size={16}/></button>
+        </div>
 
-      {activeGame.gameId === 'truco' ? <>
-        <section className="truco-board">
-          <div className="truco-board-top"><div><span className="eyebrow">MARCADOR DE TRUCO</span><h2>Hasta {trucoTarget} tantos</h2></div><div className="target-stamp"><strong>{Math.max(0, trucoTarget - Math.max(...activeGame.players.map(p => shownTruco(p.name))))}</strong><small>para ganar</small></div></div>
-          <div className="truco-column-labels"><span>EQUIPO</span><span>MALAS · 1–{trucoSplit}</span><span>BUENAS · {trucoSplit+1}–{trucoTarget}</span><span>TANTOS</span></div>
-          {activeGame.players.map((p, i) => {
-            const score = Math.max(0, Math.min(trucoTarget, shownTruco(p.name)));
-            const malas = Math.min(score, trucoSplit);
-            const buenas = Math.max(0, score - trucoSplit);
-            const won = score >= trucoTarget;
-            return <div className={`truco-team-row ${i===0?'our-team':'their-team'} ${won?'team-winner':''}`} key={p.id || p.name}>
-              <div className="truco-team-title"><strong>{p.name}</strong>{activeGame.rules?.teamMembers?.[p.name]?.length > 0 && <small>{activeGame.rules.teamMembers[p.name].join(' · ')}</small>}{won && <span>¡Ganó!</span>}</div>
-              <div className="score-section"><small>MALAS</small><div className="score-sticks">{Array.from({ length: trucoSplit }, (_, n) => <span key={n} className={n < malas ? 'stick filled' : 'stick'} />)}</div><b>{malas}</b></div>
-              <div className="score-section buenas-section"><small>BUENAS</small><div className="score-sticks">{Array.from({ length: trucoTarget-trucoSplit }, (_, n) => <span key={n} className={n < buenas ? 'stick filled' : 'stick'} />)}</div><b>{buenas}</b></div>
-              <div className="truco-total">{score}<small>/{trucoTarget}</small></div>
-            </div>;
-          })}
-        </section>
-        <section className="truco-controls">
-          <div className="special-panel-title"><div><span className="eyebrow">SUMAR TANTOS</span><h2>Tocá el equipo que suma</h2></div><span className="pending-pill">{Object.values(roundScores).reduce((s,n) => s + (Number(n)||0),0) > 0 ? 'Cambios sin guardar' : 'Marcador guardado'}</span></div>
-          <div className="truco-quick-grid">
-            {activeGame.players.map((p, i) => <div className={`truco-quick-card ${i===0?'our-quick':'their-quick'}`} key={p.id || p.name}>
-              <strong>{p.name}</strong><span className="quick-current">{shownTruco(p.name)} <small>tantos</small></span>
-              <div className="quick-buttons">
-                {[1,2,3,4].map(n => <button type="button" key={n} onClick={() => setRoundScores(s => ({ ...s, [p.name]: Math.min(trucoTarget - (Number(totals[p.name])||0), Math.max(-(Number(totals[p.name])||0), (Number(s[p.name])||0)+n)) }))} disabled={busy || shownTruco(p.name)>=trucoTarget}>+{n}</button>)}
-                <button type="button" className="undo-point" title="Restar un tanto de los pendientes" onClick={() => setRoundScores(s => ({ ...s, [p.name]: Math.max(-(Number(totals[p.name])||0), (Number(s[p.name])||0)-1) }))} disabled={busy || (Number(roundScores[p.name])||0)<=0}><Undo2 size={15}/></button>
-              </div>
-              {activeGame.rules?.teamMembers?.[p.name]?.length > 0 && <small className="team-members-note">{activeGame.rules.teamMembers[p.name].join(' · ')}</small>}
-            </div>)}
-          </div>
-          <div className="truco-tip">Los botones cargan los tantos de manera provisoria. Al guardar, quedan registrados en Google Sheets como una anotación de la mano.</div>
-          <label className="note-label">Nota de la mano (opcional)<input value={roundNote} onChange={e => setRoundNote(e.target.value)} placeholder="Ej. envido, falta envido, vale cuatro…"/></label>
-          <div className="truco-save-row"><button className="button secondary" onClick={() => setRoundScores(Object.fromEntries(activeGame.players.map(p => [p.name, 0])))} disabled={busy}><RotateCcw size={16}/> Descartar cambios</button><button className="button primary" onClick={addRound} disabled={busy || !Object.values(roundScores).some(n => Number(n)!==0)}><Check size={17}/> Guardar tanteo</button></div>
-        </section>
-      </> : <>
-        <div className="scoreboard"><div className="scoreboard-head"><h2><Trophy size={20}/> Marcador</h2><span>{(activeGame.rounds || []).length} rondas</span></div>{ranking.map(([name,score],i) => <div className={`score-row ${i===0?'leader':''}`} key={name}><span className="rank">{i===0?'✦':String(i+1).padStart(2,'0')}</span><strong>{name}</strong><span className="total-score">{score}</span></div>)}</div>
-        <section className="round-panel">
-          <span className="eyebrow">RONDA {(activeGame.rounds || []).length + 1}</span>
-          <h2>{activeGame.gameId === 'escoba' ? '¿Quién se lleva los puntos?' : activeGame.gameId === 'chinchon' ? 'Puntos de la mano' : activeGame.gameId === 'rummy' ? 'Cartas que quedaron en la mano' : 'Anotá los puntos'}</h2>
-          <p>{activeGame.gameId === 'escoba' ? 'Cada escoba suma 1. Las categorías se otorgan con los selectores de abajo.' : activeGame.gameId === 'chinchon' ? 'Ingresá la penalización de cada jugador. Si alguien hizo chinchón, podés aplicar el bonus configurado.' : activeGame.gameId === 'rummy' ? 'Cargá la suma de valores de las cartas que cada persona no pudo bajar. En esta variante, menos puntos es mejor.' : 'Usá valores negativos si necesitás restar puntos.'}</p>
-          <div className="round-inputs">{activeGame.players.map((p,i) => <label key={p.id || p.name}><span>{activeGame.gameId === 'escoba' ? `${p.name} · escobas` : p.name}</span><div className="number-stepper"><button type="button" onClick={() => setRoundScores(s => ({ ...s, [p.name]: (Number(s[p.name])||0)-1 }))}><Minus size={16}/></button><input type="number" value={roundScores[p.name] ?? 0} onChange={e => setRoundScores(s => ({ ...s, [p.name]: e.target.value }))}/><button type="button" onClick={() => setRoundScores(s => ({ ...s, [p.name]: (Number(s[p.name])||0)+1 }))}><Plus size={16}/></button></div></label>)}</div>
-          {activeGame.gameId === 'escoba' && <div className="escoba-awards"><div className="special-panel-title"><div><span className="eyebrow">CATEGORÍAS DE LA ESCOBA</span><h3>Un punto para quien corresponda</h3></div></div>{[
-            ['masCartas','Más cartas'], ['masOros','Más oros'], ['sieteOro','Siete de oros'], ['masSietes','Más sietes']
-          ].map(([key,label]) => <label className="award-row" key={key}><span>{label}<small> +1 punto</small></span><select value={escobaAwards[key]} onChange={e => setEscobaAwards(s => ({ ...s, [key]: e.target.value }))}><option value="">Sin punto / empate</option>{activeGame.players.map(p => <option value={p.name} key={p.name}>{p.name}</option>)}</select></label>)}</div>}
-          {activeGame.gameId === 'chinchon' && <label className="bonus-select">¿Alguien hizo chinchón? (opcional)<select value={chinchonPlayer} onChange={e => setChinchonPlayer(e.target.value)}><option value="">No aplicar bonus</option>{activeGame.players.map(p => <option value={p.name} key={p.name}>{p.name} (−{Math.abs(Number(activeGame.rules?.chinchonBonus ?? 10))} puntos)</option>)}</select></label>}
-          <label>Nota de la ronda (opcional)<input value={roundNote} onChange={e => setRoundNote(e.target.value)} placeholder={activeGame.gameId === 'escoba' ? 'Ej. última carta, jugada especial…' : 'Ej. cierre, cartas restantes…'}/></label>
-          <button className="button primary wide" onClick={addRound} disabled={busy}><PlusCircle size={17}/> Guardar ronda</button>
-        </section>
-      </>}
-      {(activeGame.rounds || []).length > 0 && <section className="round-history"><h2>Rondas anteriores</h2>{activeGame.rounds.map((r,i) => <div className="round-line" key={r.id || i}><span>Ronda {i+1}{r.note ? ` · ${r.note}` : ''}</span><span>{activeGame.players.map(p => `${p.name}: ${r.scores?.[p.name] ?? 0}`).join('  /  ')}</span></div>)}</section>}
-      {activeGame.gameId === 'truco' && activeGame.players.some(p => Number(totals[p.name]) >= trucoTarget) && <div className="alert success">¡El objetivo de tantos se alcanzó! Revisen el marcador y finalicen la partida.</div>}
-      {activeGame.gameId === 'chinchon' && activeGame.rules?.endAtTarget !== false && activeGame.players.some(p => Number(totals[p.name]) >= Number(activeGame.rules.target)) && <div className="alert error">Al menos una persona alcanzó el límite de {activeGame.rules.target} puntos. Revisen sus reglas de mesa antes de finalizar.</div>}
-      <button className="button finish-button" onClick={finishGame} disabled={busy}><Trophy size={17}/> Finalizar partida</button>
+        <div className="mobile-play-content">
+          {activeGame.gameId === 'truco' ? <>
+            <div className="mobile-match-meta"><span>PARTIDO A {trucoTarget}</span><span>{(activeGame.rounds || []).length} manos guardadas</span></div>
+            <div className="truco-tap-instruction">Tocá la línea hasta donde llegó el equipo. Cada marca suma un tanto.</div>
+            <div className="truco-mobile-teams">
+              {activeGame.players.map((p, i) => {
+                const score = Math.max(0, Math.min(trucoTarget, shownTruco(p.name)));
+                const malas = Math.min(score, trucoSplit);
+                const buenas = Math.max(0, score - trucoSplit);
+                const remainingSlots = trucoTarget - trucoSplit;
+                const won = score >= trucoTarget;
+                return <section className={`truco-mobile-team ${i === 0 ? 'team-mint' : 'team-rose'} ${won ? 'team-winner' : ''}`} key={p.id || p.name}>
+                  <div className="truco-team-head"><div><span className="team-kicker">EQUIPO {i + 1}</span><h2>{p.name}</h2>{activeGame.rules?.teamMembers?.[p.name]?.length > 0 && <p>{activeGame.rules.teamMembers[p.name].join(' · ')}</p>}</div><div className="truco-score-bubble"><strong>{score}</strong><small>/{trucoTarget}</small></div></div>
+                  <div className="tally-touch-area">
+                    <div className="tally-section-mobile"><div className="tally-label-row"><span>MALAS</span><strong>{malas}<small>/{trucoSplit}</small></strong></div><div className="tally-lines-grid">{Array.from({ length: trucoSplit }, (_, n) => <button type="button" key={n} aria-label={`Marcar ${n + 1} malas para ${p.name}`} className={`tally-line ${n < malas ? 'marked' : ''}`} onClick={() => setTrucoScoreAt(p.name, n + 1)} disabled={busy || won}>{/* each line is a direct tap target */}</button>)}</div></div>
+                    <div className="tally-section-mobile"><div className="tally-label-row"><span>BUENAS</span><strong>{buenas}<small>/{remainingSlots}</small></strong></div><div className="tally-lines-grid">{Array.from({ length: remainingSlots }, (_, n) => <button type="button" key={n} aria-label={`Marcar ${trucoSplit + n + 1} tantos para ${p.name}`} className={`tally-line ${n < buenas ? 'marked' : ''}`} onClick={() => setTrucoScoreAt(p.name, trucoSplit + n + 1)} disabled={busy || won}>{/* each line is a direct tap target */}</button>)}</div></div>
+                    <span className="tap-hint">{won ? '¡Llegó a la meta!' : 'Tocá una línea para marcar ese tanto'}</span>
+                  </div>
+                  <div className="team-score-actions"><button type="button" onClick={() => setTrucoScoreAt(p.name, Math.max(0, score - 1))} disabled={busy || score <= (Number(totals[p.name]) || 0)}>− 1 tanto</button><button type="button" onClick={() => setTrucoScoreAt(p.name, Math.min(trucoTarget, score + 1))} disabled={busy || score >= trucoTarget}>+ 1 tanto</button></div>
+                </section>;
+              })}
+            </div>
+            {Object.values(roundScores).some(n => Number(n) !== 0) && <div className="pending-round-banner"><span>✦ Hay tantos sin guardar</span><strong>{Object.values(roundScores).reduce((sum, n) => sum + (Number(n) || 0), 0)} tanto(s)</strong></div>}
+          </> : <>
+            <div className="mobile-match-meta"><span>RONDA {(activeGame.rounds || []).length + 1}</span><span>{(activeGame.rounds || []).length} rondas guardadas</span></div>
+            <section className="mobile-score-cards">
+              {ranking.map(([name, score], i) => <article className={`mobile-player-score ${i === 0 ? 'is-leading' : ''}`} key={name}>
+                <span className="mobile-player-rank">{i === 0 ? '★' : String(i + 1).padStart(2, '0')}</span><div className="mobile-player-data"><strong>{name}</strong><small>{i === 0 ? (activeGame.rules?.direction === 'lower' ? 'Menor puntaje' : 'Va primero') : 'Puntaje acumulado'}</small></div><strong className="mobile-player-total">{score}</strong>
+              </article>)}
+            </section>
+            <div className="mobile-score-summary"><span>{activeGame.gameName}</span><strong>{activeGame.rules?.direction === 'lower' ? 'Gana el puntaje más bajo' : 'Gana el puntaje más alto'}</strong></div>
+            {(activeGame.rounds || []).length > 0 && <section className="mobile-last-round"><div><span className="eyebrow">ÚLTIMA JUGADA</span><strong>{activeGame.rounds[activeGame.rounds.length - 1].note || `Ronda ${activeGame.rounds.length}`}</strong></div><span>{new Date(activeGame.rounds[activeGame.rounds.length - 1].createdAt || Date.now()).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span></section>}
+          </>}
+
+          {activeGame.gameId !== 'truco' && activeGame.gameId === 'chinchon' && activeGame.rules?.endAtTarget !== false && activeGame.players.some(p => Number(totals[p.name]) >= Number(activeGame.rules?.target)) && <div className="mobile-notice">Alguien alcanzó el límite de puntos. Revisá el marcador antes de cerrar.</div>}
+          <section className="mobile-history">
+            <div className="mobile-history-heading"><h3>Jugadas</h3><span>{(activeGame.rounds || []).length}</span></div>
+            {(activeGame.rounds || []).length ? [...activeGame.rounds].reverse().slice(0, 5).map((r, i) => <div className="mobile-history-row" key={r.id || i}><div className="round-number-badge">{r.roundNumber || activeGame.rounds.length - i}</div><div className="mobile-history-text"><strong>{r.note || `Ronda ${r.roundNumber || activeGame.rounds.length - i}`}</strong><small>{activeGame.players.map(p => `${p.name}: ${r.scores?.[p.name] ?? 0}`).join(' · ')}</small></div></div>) : <p className="mobile-empty-history">Todavía no hay jugadas guardadas.</p>}
+          </section>
+        </div>
+        <div className="mobile-play-bottom">
+          {activeGame.gameId === 'truco' ? <button type="button" className="mobile-primary-action" onClick={openRoundModal} disabled={busy || !Object.values(roundScores).some(n => Number(n) !== 0)}><Check size={18}/> Registrar mano {Object.values(roundScores).some(n => Number(n) !== 0) ? `· ${Object.values(roundScores).reduce((sum, n) => sum + (Number(n) || 0), 0)} tantos` : ''}</button> : <button type="button" className="mobile-primary-action" onClick={openRoundModal} disabled={busy}><PlusCircle size={18}/> Cargar jugada</button>}
+          <button type="button" className="mobile-secondary-action" onClick={() => { if (activeGame.gameId === 'truco' && Object.values(roundScores).some(n => Number(n) !== 0)) { setError('Guardá los tantos pendientes antes de salir.'); return; } setScreen('group'); }}><ArrowLeft size={16}/> Volver a la mesa</button>
+        </div>
+      </section>
     </>}
 
     {screen === 'rules' && <>
@@ -468,6 +546,31 @@ export default function App() {
         <div className="rule-editor-actions"><button type="button" className="button secondary" onClick={() => setScreen(ruleReturnTo === 'newgame' ? 'newgame' : 'rules')}>Cancelar</button><button type="button" className="button primary" onClick={saveRuleEditor} disabled={busy}><Check size={16}/> Guardar reglas</button></div>
       </section>
     </>}
+    {showRoundModal && activeGame && <div className="mobile-modal-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) cancelRoundModal(); }}>
+      <section className="mobile-round-modal" role="dialog" aria-modal="true" aria-labelledby="round-modal-title">
+        <div className="mobile-modal-grabber" />
+        <div className="mobile-modal-head"><div><span className="eyebrow">{activeGame.gameName.toUpperCase()}</span><h2 id="round-modal-title">{activeGame.gameId === 'truco' ? 'Registrar la mano' : 'Cargar jugada'}</h2><p>{activeGame.gameId === 'truco' ? 'Dejá anotado qué pasó en esta mano.' : 'Ingresá los puntos y guardá la ronda.'}</p></div><button type="button" className="modal-x" onClick={cancelRoundModal} aria-label="Cerrar">×</button></div>
+        <div className="mobile-modal-scroll">
+          {activeGame.gameId === 'truco' ? <>
+            <div className="modal-score-preview">{activeGame.players.map(p => <div key={p.name}><span>{p.name}</span><strong>+{Number(roundScores[p.name]) || 0}</strong></div>)}</div>
+            <label className="mobile-modal-label">¿Qué pasó en la mano?<input value={roundNote} onChange={e => setRoundNote(e.target.value)} placeholder="Envido, retruco, vale cuatro…" /></label>
+            <p className="modal-help">Los tantos se marcaron tocando las líneas del tablero. Al guardar, se registran en Google Sheets.</p>
+          </> : <>
+            <div className="modal-players-inputs">{activeGame.players.map((p, i) => <label className="mobile-modal-label" key={p.id || p.name}><span>{activeGame.gameId === 'escoba' ? `${p.name} · escobas` : activeGame.gameId === 'chinchon' ? `${p.name} · penalización` : activeGame.gameId === 'rummy' ? `${p.name} · puntos de cartas` : p.name}</span><div className="mobile-number-control"><button type="button" aria-label="Restar un punto" onClick={() => setRoundScores(s => ({ ...s, [p.name]: (Number(s[p.name]) || 0) - 1 }))}>−</button><input type="number" inputMode="decimal" value={roundScores[p.name] ?? 0} onChange={e => setRoundScores(s => ({ ...s, [p.name]: e.target.value }))} placeholder="0"/><button type="button" aria-label="Sumar un punto" onClick={() => setRoundScores(s => ({ ...s, [p.name]: (Number(s[p.name]) || 0) + 1 }))}>+</button></div></label>)}</div>
+            {activeGame.gameId === 'escoba' && <div className="mobile-modal-special"><h3>Categorías de la mano</h3>{[['masCartas','Más cartas'],['masOros','Más oros'],['sieteOro','Siete de oros'],['masSietes','Más sietes']].map(([key,label]) => <label className="mobile-modal-label" key={key}>{label}<select value={escobaAwards[key]} onChange={e => setEscobaAwards(v => ({ ...v, [key]: e.target.value }))}><option value="">Sin punto / empate</option>{activeGame.players.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}</select></label>)}</div>}
+            {activeGame.gameId === 'chinchon' && <label className="mobile-modal-label">¿Alguien hizo chinchón?<select value={chinchonPlayer} onChange={e => setChinchonPlayer(e.target.value)}><option value="">No aplicar bonus</option>{activeGame.players.map(p => <option key={p.name} value={p.name}>{p.name} (−{Math.abs(Number(activeGame.rules?.chinchonBonus ?? 10))} puntos)</option>)}</select></label>}
+            <label className="mobile-modal-label">Nota de la jugada (opcional)<input value={roundNote} onChange={e => setRoundNote(e.target.value)} placeholder="Ej. cierre, escoba de mano…" /></label>
+          </>}
+        </div>
+        <div className="mobile-modal-actions"><button type="button" className="mobile-secondary-action" onClick={cancelRoundModal}>Cancelar</button><button type="button" className="mobile-primary-action" onClick={addRound} disabled={busy || (activeGame.gameId === 'truco' && !Object.values(roundScores).some(n => Number(n) !== 0))}><Check size={17}/> Guardar jugada</button></div>
+      </section>
+    </div>}
+
+    {winnerInfo && <div className="winner-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setWinnerInfo(null); }}>
+      <div className="confetti-layer" aria-hidden="true">{Array.from({ length: 34 }, (_, i) => <i key={i} style={{ '--i': i, '--x': `${(i * 37) % 100}%`, '--delay': `${(i % 9) * -0.23}s`, '--hue': `${(i * 41) % 360}` }} />)}</div>
+      <section className="winner-card" role="dialog" aria-modal="true" aria-labelledby="winner-title"><div className="winner-sparkle">✦</div><span className="winner-kicker">PARTIDA TERMINADA</span><h2 id="winner-title">¡Tenemos ganador/a!</h2><div className="winner-trophy">🏆</div><p className="winner-caption">La victoria de esta partida es para</p><strong className="winner-name">{winnerInfo.winner}</strong><span className="winner-game-name">{winnerInfo.gameName} · {winnerInfo.title}</span><div className="winner-results">{Object.entries(winnerInfo.totals || {}).sort((a,b) => (winnerInfo.direction === 'lower' ? a[1]-b[1] : b[1]-a[1])).map(([name, score], i) => <div key={name} className={name === winnerInfo.winner ? 'winner-result leader' : 'winner-result'}><span>{i === 0 ? '★' : String(i + 1).padStart(2, '0')} {name}</span><strong>{score}</strong></div>)}</div><button type="button" className="mobile-primary-action winner-dismiss" onClick={() => setWinnerInfo(null)}><Trophy size={17}/> Volver a la mesa</button><a href="https://www.somosnomade.com.ar/" target="_blank" rel="noreferrer" className="winner-brand">hecho para jugar juntxs por <strong>NÓMADE</strong> ♥</a></section>
+    </div>}
+
     {showInstallHelp && <div className="install-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setShowInstallHelp(false); }}>
       <section className="install-dialog" role="dialog" aria-modal="true" aria-labelledby="install-title">
         <button className="install-close" type="button" onClick={() => setShowInstallHelp(false)} aria-label="Cerrar instrucciones"><X size={18}/></button>
