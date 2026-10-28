@@ -19,9 +19,61 @@ const DEFAULT_RULES = {
 const blankGroup = { name: '', accessCode: '' };
 const mergeRules = (saved = {}) => Object.fromEntries(Object.keys(DEFAULT_RULES).map(id => [id, { ...DEFAULT_RULES[id], ...(saved?.[id] || {}) }]));
 const blankPlayers = () => ['', ''];
+const DEVICE_GROUPS_KEY = 'partiditas_my_groups_v1';
+
+function readDeviceGroups() {
+  if (typeof window === 'undefined') return [];
+  try {
+    const value = JSON.parse(window.localStorage.getItem(DEVICE_GROUPS_KEY) || '[]');
+    return Array.isArray(value) ? value.filter(item => item && item.id && item.name) : [];
+  } catch {
+    return [];
+  }
+}
+function writeDeviceGroups(groups) {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(DEVICE_GROUPS_KEY, JSON.stringify(groups)); }
+  catch { /* La app sigue funcionando aunque el navegador bloquee el almacenamiento local. */ }
+}
+function rememberDeviceGroup(group) {
+  const existing = readDeviceGroups().filter(item => String(item.id) !== String(group.id));
+  const entry = {
+    id: String(group.id),
+    name: String(group.name || 'Mi mesa'),
+    accessCode: String(group.accessCode || ''),
+    requiresKey: true,
+    rememberedAt: new Date().toISOString()
+  };
+  const next = [entry, ...existing];
+  writeDeviceGroups(next);
+  return next;
+}
+function removeDeviceGroup(groupId) {
+  const next = readDeviceGroups().filter(item => String(item.id) !== String(groupId));
+  writeDeviceGroups(next);
+  return next;
+}
+
+function TallyBundle({ fill = 0, onClick, disabled = false, label }) {
+  const count = Math.max(0, Math.min(5, Number(fill) || 0));
+  return <button
+    type="button"
+    className={`tally-bundle ${count === 5 ? 'is-full' : ''} ${count > 0 ? 'has-marks' : ''}`}
+    onClick={onClick}
+    disabled={disabled}
+    aria-label={label}
+    title={label}
+  >
+    <svg className="tally-bundle-svg" viewBox="0 0 52 42" aria-hidden="true" focusable="false">
+      {[0,1,2,3].map(i => <line key={i} x1={8 + i * 9} y1="5" x2={8 + i * 9} y2="36" className={count > i ? 'tally-stroke on' : 'tally-stroke'} />)}
+      <line x1="5" y1="35" x2="41" y2="6" className={count >= 5 ? 'tally-stroke diagonal on' : 'tally-stroke diagonal'} />
+    </svg>
+    <span>{count}/5</span>
+  </button>;
+}
 
 export default function App() {
-  const [groups, setGroups] = useState([]);
+  const [groups, setGroups] = useState(() => readDeviceGroups());
   const [group, setGroup] = useState(null);
   const [history, setHistory] = useState([]);
   const [activeGame, setActiveGame] = useState(null);
@@ -103,27 +155,48 @@ export default function App() {
     }
   }
   async function refreshGroups() {
-    setBusy(true); setError('');
-    try { const data = await api('listGroups'); setGroups(data.groups || []); }
-    catch (e) { setError(`${e.message} Si todavía no configuraste Apps Script, seguí los pasos del README.`); }
-    finally { setBusy(false); setLoaded(true); }
+    // La pantalla inicial solo muestra mesas recordadas en este dispositivo.
+    // No llamamos listGroups: no debe existir un catálogo público de mesas.
+    setGroups(readDeviceGroups());
+    setLoaded(true);
   }
   async function openGroup(g) {
-    let accessCode = g.accessCode || '';
-    if (g.requiresKey && !accessCode) { accessCode = window.prompt('Esta mesa tiene clave. Ingresala para entrar:') || ''; if (!accessCode) return; }
+    let accessCode = String(g.accessCode || '').trim();
+    if (!accessCode) {
+      const entered = window.prompt('Ingresá la clave privada de esta mesa:');
+      if (entered === null) return;
+      accessCode = entered.trim();
+      if (!accessCode) return;
+    }
     setBusy(true); setError('');
     try {
       const data = await api('getGroup', { groupId: g.id, accessCode });
-      setGroup({ ...data.group, accessCode }); setHistory(data.games || []); setRules(mergeRules(data.group?.rules)); setScreen('group');
+      const opened = { ...data.group, id: g.id, accessCode, requiresKey: true };
+      setGroup(opened);
+      setGroups(rememberDeviceGroup({ ...opened, accessCode }));
+      setHistory(data.games || []);
+      setRules(mergeRules(data.group?.rules));
+      setScreen('group');
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
   async function createGroup(e) {
-    e.preventDefault(); setBusy(true); setError('');
+    e.preventDefault();
+    const accessCode = groupForm.accessCode.trim();
+    if (accessCode.length < 12) {
+      setError('La clave privada necesita al menos 12 caracteres. Elegí una que no uses en otras cuentas.');
+      return;
+    }
+    setBusy(true); setError('');
     try {
-      const data = await api('createGroup', { name: groupForm.name.trim(), accessCode: groupForm.accessCode.trim() });
-      const created = { ...data.group, accessCode: groupForm.accessCode.trim() };
-      setGroup(created); setGroups(prev => [...prev, { id: created.id, name: created.name }]); setHistory([]); setRules(mergeRules(data.group?.rules)); setGroupForm(blankGroup); setScreen('group');
+      const data = await api('createGroup', { name: groupForm.name.trim(), accessCode });
+      const created = { ...data.group, accessCode, requiresKey: true };
+      setGroup(created);
+      setGroups(rememberDeviceGroup(created));
+      setHistory([]);
+      setRules(mergeRules(data.group?.rules));
+      setGroupForm(blankGroup);
+      setScreen('group');
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
@@ -140,7 +213,7 @@ export default function App() {
       return;
     }
 
-    let accessCode = group?.id === g.id ? (group.accessCode || '') : '';
+    let accessCode = (group?.id === g.id ? (group.accessCode || '') : '') || g.accessCode || '';
     if (g.requiresKey && !accessCode) {
       const entered = window.prompt(`La mesa “${g.name}” tiene clave. Ingresala para editarla:`);
       if (entered === null) return;
@@ -155,8 +228,9 @@ export default function App() {
     setError('');
     try {
       const data = await api('updateGroup', { groupId: g.id, accessCode, name });
-      setGroups(prev => prev.map(item => item.id === g.id ? { ...item, name: data.group?.name || name } : item));
-      if (group?.id === g.id) setGroup(prev => prev ? { ...prev, name: data.group?.name || name, accessCode: accessCode || prev.accessCode || '' } : prev);
+      const renamed = { ...g, name: data.group?.name || name, accessCode, requiresKey: true };
+      setGroups(rememberDeviceGroup(renamed));
+      if (group?.id === g.id) setGroup(prev => prev ? { ...prev, name: renamed.name, accessCode: accessCode || prev.accessCode || '' } : prev);
       setMessage(`Mesa actualizada: ${data.group?.name || name}.`);
       setTimeout(() => setMessage(''), 2600);
     } catch (e) {
@@ -166,51 +240,48 @@ export default function App() {
     }
   }
 
-  async function deleteGroup(g) {
+  function removeGroupFromDevice(g) {
     const confirmed = window.confirm(
-      `¿Eliminar la mesa “${g.name}”?\n\nTambién se eliminarán sus partidas, rondas, resultados e historial. Esta acción no se puede deshacer.`
+      `¿Quitar “${g.name}” de este celular?\n\nSolo se elimina de la lista de este dispositivo. La mesa, las partidas y el historial seguirán guardados en Google Sheets, y las demás personas conservarán su acceso. Para volver a entrar necesitarás el ID y la clave.`
     );
     if (!confirmed) return;
-
-    let accessCode = group?.id === g.id ? (group.accessCode || '') : '';
-    if (g.requiresKey && !accessCode) {
-      const entered = window.prompt(`La mesa “${g.name}” tiene clave. Ingresala para eliminarla:`);
-      if (entered === null) return;
-      accessCode = entered.trim();
-      if (!accessCode) {
-        setError('Necesitás ingresar la clave de esta mesa para eliminarla.');
-        return;
-      }
+    setGroups(removeDeviceGroup(g.id));
+    if (group?.id === g.id) {
+      setGroup(null);
+      setHistory([]);
+      setActiveGame(null);
+      setScreen('home');
+      setRules(DEFAULT_RULES);
     }
-
-    setBusy(true);
-    setError('');
-    try {
-      await api('deleteGroup', { groupId: g.id, accessCode });
-      setGroups(prev => prev.filter(item => item.id !== g.id));
-      if (group?.id === g.id) {
-        setGroup(null);
-        setHistory([]);
-        setActiveGame(null);
-        setScreen('home');
-        setRules(DEFAULT_RULES);
-      }
-      setMessage(`Se eliminó la mesa “${g.name}” y su historial.`);
-      setTimeout(() => setMessage(''), 3200);
-    } catch (e) {
-      setError(`No se pudo eliminar la mesa: ${e.message}`);
-    } finally {
-      setBusy(false);
-    }
+    setMessage(`“${g.name}” se quitó de este dispositivo. El historial sigue guardado.`);
+    window.setTimeout(() => setMessage(''), 3500);
   }
 
   async function joinGroup(e) {
     e.preventDefault(); setBusy(true); setError('');
+    const id = joinCode.trim();
+    const accessCode = joinAccessCode.trim();
     try {
-      const data = await api('getGroup', { groupId: joinCode.trim(), accessCode: joinAccessCode.trim() });
-      setGroup({ ...data.group, accessCode: joinAccessCode.trim() }); setHistory(data.games || []); setRules(mergeRules(data.group?.rules)); setJoinCode(''); setJoinAccessCode(''); setScreen('group');
+      const data = await api('getGroup', { groupId: id, accessCode });
+      const joined = { ...data.group, id, accessCode, requiresKey: true };
+      setGroup(joined);
+      setGroups(rememberDeviceGroup(joined));
+      setHistory(data.games || []);
+      setRules(mergeRules(data.group?.rules));
+      setJoinCode(''); setJoinAccessCode(''); setScreen('group');
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
+  }
+
+  function resumeGame(gameToResume) {
+    if (!gameToResume || gameToResume.status === 'finished' || gameToResume.finishedAt) return;
+    setActiveGame(gameToResume);
+    setRoundScores(Object.fromEntries((gameToResume.players || []).map(p => [p.name, 0])));
+    setRoundNote('');
+    setEscobaAwards({ masCartas: '', masOros: '', sieteOro: '', masSietes: '' });
+    setChinchonPlayer('');
+    setError('');
+    setScreen('play');
   }
   function addPlayer() { setGameForm(f => ({ ...f, players: [...f.players, ''] })); }
   function setPlayer(i, value) { setGameForm(f => ({ ...f, players: f.players.map((p, j) => i === j ? value : p) })); }
@@ -404,7 +475,7 @@ export default function App() {
     {busy && <div className="busy"><LoaderCircle size={16} className="spin"/> Guardando…</div>}
 
     {screen === 'home' && <>
-      <section className="hero"><div><span className="eyebrow">LA MESA ESTÁ LISTA</span><h1>Una partida más.<br/><em>Y otra también.</em></h1><p>Creá una mesa para tu grupo, anotá los tantos y que la memoria la tenga la app.</p></div><div className="hero-doodle" aria-hidden="true"><div className="doodle-card yellow">¿Quién<br/>va ganando?</div><div className="doodle-card pink">¡Dale<br/>revancha!</div><span>✦</span></div></section>
+      <section className="hero home-hero-compact"><div><span className="eyebrow">LA MESA ESTÁ LISTA</span><h1>Una partida más.<br/><em>Y otra también.</em></h1><p>Tus mesas, sus puntajes y la revancha, todo en un solo lugar.</p></div><div className="hero-doodle compact-doodles" aria-hidden="true"><div className="doodle-card yellow">¿Quién gana?</div><div className="doodle-card pink">¡Revancha!</div><span>✦</span></div></section>
       <section className="section-head home-section-head"><div><span className="eyebrow">EMPEZAR</span><h2>Tus mesas de juego</h2><p className="section-subtitle">Cada grupo tiene su propio historial y sus reglas.</p></div><div className="home-section-actions"><span className="count-pill">{groups.length} {groups.length === 1 ? 'mesa' : 'mesas'}</span><button type="button" className="button primary new-table-button" onClick={() => { setGroupForm(blankGroup); setError(''); setScreen('newgroup'); }}><Plus size={17}/> NUEVA MESA</button></div></section>
       {groups.length ? <div className="group-grid">{groups.map((g, i) => <article className={`group-card note-${i%4}`} key={g.id}>
         <button type="button" className="group-card-open" onClick={() => openGroup(g)} aria-label={`Abrir mesa ${g.name}`} disabled={busy}>
@@ -412,11 +483,11 @@ export default function App() {
         </button>
         <div className="group-card-actions" aria-label={`Acciones para ${g.name}`}>
           <button type="button" onClick={() => editGroup(g)} title={`Editar mesa ${g.name}`} aria-label={`Editar mesa ${g.name}`} disabled={busy}><Pencil size={14}/></button>
-          <button type="button" className="delete-group-action" onClick={() => deleteGroup(g)} title={`Eliminar mesa ${g.name}`} aria-label={`Eliminar mesa ${g.name}`} disabled={busy}><Trash2 size={14}/></button>
+          <button type="button" className="delete-group-action" onClick={() => removeGroupFromDevice(g)} title={`Quitar ${g.name} de este dispositivo`} aria-label={`Quitar ${g.name} de este dispositivo`} disabled={busy}><X size={14}/></button>
         </div>
-      </article>)}</div> : <div className="empty-state home-empty"><span>🗒️</span><strong>Todavía no hay mesas creadas</strong><p>Creá la primera y empezá a guardar sus partidas.</p><button type="button" className="button secondary" onClick={() => setScreen('newgroup')}><Plus size={16}/> Crear la primera mesa</button></div>}
-      <form className="join-strip" onSubmit={joinGroup}><div className="join-icon"><Users size={21}/></div><div><strong>¿Te compartieron el ID de una mesa?</strong><p>Ingresalo para abrir su historial.</p></div><input value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="ID de la mesa" required/><input value={joinAccessCode} onChange={e => setJoinAccessCode(e.target.value)} placeholder="Clave (si tiene)"/><button className="button secondary">Entrar</button></form>
-      <p className="privacy-note"><NotebookPen size={15}/> Las partidas se guardan en Google Sheets, no en el almacenamiento del navegador.</p>
+      </article>)}</div> : <div className="empty-state home-empty"><span>🗒️</span><strong>Este dispositivo todavía no tiene mesas guardadas</strong><p>Creá una nueva o sumate con el ID y la clave de una mesa existente.</p><button type="button" className="button secondary" onClick={() => setScreen('newgroup')}><Plus size={16}/> Nueva mesa</button></div>}
+      <form className="join-strip" onSubmit={joinGroup}><div className="join-icon"><Users size={21}/></div><div><strong>¿Te compartieron el ID de una mesa?</strong><p>Ingresalo para abrir su historial.</p></div><input value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="Código o ID de la mesa" required autoComplete="off"/><input value={joinAccessCode} onChange={e => setJoinAccessCode(e.target.value)} placeholder="Clave privada" required autoComplete="current-password"/><button className="button secondary">Entrar</button></form>
+      <p className="privacy-note"><NotebookPen size={15}/> Tu lista de mesas se recuerda en este dispositivo. El historial y los puntajes quedan guardados en Google Sheets.</p>
     </>}
 
     {screen === 'newgroup' && <>
@@ -424,7 +495,7 @@ export default function App() {
       <section className="form-panel new-group-panel"><span className="eyebrow">UNA MESA PROPIA</span><h1>¿Quiénes se juntan?</h1><p>Creá un espacio para tu grupo. Las partidas y los resultados van a quedar guardados en su propio historial.</p>
         <form onSubmit={createGroup}>
           <label>Nombre de la mesa<input required maxLength="60" value={groupForm.name} onChange={e => setGroupForm({ ...groupForm, name: e.target.value })} placeholder="Ej. Los del domingo"/></label>
-          <label>Clave de acceso (opcional)<input value={groupForm.accessCode} onChange={e => setGroupForm({ ...groupForm, accessCode: e.target.value })} placeholder="Una clave para compartir solo con tu grupo" autoComplete="new-password"/><small className="field-help">Si agregás una clave, vas a necesitarla para volver a entrar.</small></label>
+          <label>Clave privada del grupo<input value={groupForm.accessCode} onChange={e => setGroupForm({ ...groupForm, accessCode: e.target.value })} placeholder="Mínimo 12 caracteres" minLength={12} required autoComplete="new-password"/><small className="field-help">Compartila solo con tu grupo. Se recuerda en este dispositivo; si borrás los datos del navegador, necesitás el ID y la clave para volver.</small></label>
           <button className="button primary wide" disabled={busy}><Plus size={17}/> Crear mesa <span>→</span></button>
         </form>
       </section>
@@ -432,10 +503,10 @@ export default function App() {
 
     {screen === 'group' && group && <>
       <button className="back-link" onClick={() => setScreen('home')}><ArrowLeft size={16}/> Todas las mesas</button>
-      <section className="group-banner"><div><span className="eyebrow">TU MESA</span><h1>{group.name}</h1><p>Un espacio para sumar puntos, anécdotas y revancha.</p><div className="group-id">ID para compartir: <code>{group.id}</code><button onClick={() => navigator.clipboard?.writeText(group.id)} title="Copiar ID">Copiar</button></div></div><div className="banner-stamp">QUE<br/>GANE<br/>EL MEJOR</div></section>
+      <section className="group-banner"><div><span className="eyebrow">TU MESA PRIVADA</span><h1>{group.name}</h1><p>Compartí estos dos datos solo con quienes querés que entren a jugar.</p><div className="group-share-details"><div className="group-id"><span>ID de la mesa</span><code>{group.id}</code><button type="button" onClick={() => navigator.clipboard?.writeText(group.id)} title="Copiar ID">Copiar ID</button></div><div className="group-id"><span>Clave privada</span><code>{group.accessCode || 'Volvé a ingresar la clave para compartirla'}</code>{group.accessCode && <button type="button" onClick={() => navigator.clipboard?.writeText(group.accessCode)} title="Copiar clave privada">Copiar clave</button>}</div></div></div><div className="banner-stamp">QUE<br/>GANE<br/>EL MEJOR</div></section>
       <div className="action-row"><div><span className="eyebrow">¿QUÉ JUGAMOS?</span><h2>Elegí tu juego</h2></div><button className="button secondary" onClick={() => setScreen('rules')}><Settings2 size={16}/> Reglas</button></div>
       <div className="game-grid">{GAMES.map(g => <button className={`game-card ${g.color}`} key={g.id} onClick={() => { chooseGame(g.id); setScreen('newgame'); }}><span className="game-emoji">{g.emoji}</span><strong>{g.name}</strong><small>{g.description}</small><span className="game-arrow">↗</span></button>)}</div>
-      <section className="history-section"><div className="section-head"><div><span className="eyebrow">LOS RECUERDOS</span><h2>Historial de partidas</h2></div><span className="count-pill">{history.length} partidas</span></div>{history.length ? <div className="history-list">{history.map((g, i) => <div className="history-item" key={g.id}><div className={`history-icon note-${i%4}`}>{GAMES.find(x => x.id === g.gameId)?.emoji || '🎲'}</div><div className="history-main"><strong>{g.title || g.gameName}</strong><span>{g.gameName} · {(g.players || []).map(p => p.name).join(', ')}</span><small>{g.finishedAt ? `Finalizada · ${new Date(g.finishedAt).toLocaleDateString('es-AR')}` : 'En curso'}</small></div><div className="history-score">{g.winner ? <><Trophy size={15}/><span>{g.winner}</span></> : <span className="in-progress">En juego</span>}</div></div>)}</div> : <div className="empty-state"><span>🗒️</span><strong>Acá van a quedar las partidas</strong><p>Cuando terminen de jugar, vas a poder volver a ver los resultados.</p></div>}</section>
+      <section className="history-section"><div className="section-head"><div><span className="eyebrow">LOS RECUERDOS</span><h2>Historial de partidas</h2></div><span className="count-pill">{history.length} partidas</span></div>{history.length ? <div className="history-list">{history.map((g, i) => { const inProgress = g.status !== 'finished' && !g.finishedAt; return <div className={`history-item ${inProgress ? 'history-item-open' : ''}`} key={g.id}><div className={`history-icon note-${i%4}`}>{GAMES.find(x => x.id === g.gameId)?.emoji || '🎲'}</div><div className="history-main"><strong>{g.title || g.gameName}</strong><span>{g.gameName} · {(g.players || []).map(p => p.name).join(', ')}</span><small>{inProgress ? 'Partida sin finalizar' : `Finalizada · ${new Date(g.finishedAt || g.createdAt).toLocaleDateString('es-AR')}`}</small></div><div className="history-score">{inProgress ? <button type="button" className="resume-game-button" onClick={() => resumeGame(g)} disabled={busy}>Continuar ↗</button> : g.winner ? <><Trophy size={15}/><span>{g.winner}</span></> : <span className="in-progress">Finalizada</span>}</div></div>;})}</div> : <div className="empty-state"><span>🗒️</span><strong>Acá van a quedar las partidas</strong><p>Cuando terminen de jugar, vas a poder volver a ver los resultados.</p></div>}</section>
     </>}
 
     {screen === 'newgame' && group && <>
@@ -469,7 +540,7 @@ export default function App() {
         <div className="mobile-play-content">
           {activeGame.gameId === 'truco' ? <>
             <div className="mobile-match-meta"><span>PARTIDO A {trucoTarget}</span><span>{(activeGame.rounds || []).length} manos guardadas</span></div>
-            <div className="truco-tap-instruction">Tocá la línea hasta donde llegó el equipo. Cada marca suma un tanto.</div>
+            <div className="truco-tap-instruction">Tocá el bloque activo para sumar un tanto. Cada 5 tantos se completa un grupo de cuatro líneas y una diagonal.</div>
             <div className="truco-mobile-teams">
               {activeGame.players.map((p, i) => {
                 const score = Math.max(0, Math.min(trucoTarget, shownTruco(p.name)));
@@ -480,9 +551,9 @@ export default function App() {
                 return <section className={`truco-mobile-team ${i === 0 ? 'team-mint' : 'team-rose'} ${won ? 'team-winner' : ''}`} key={p.id || p.name}>
                   <div className="truco-team-head"><div><span className="team-kicker">EQUIPO {i + 1}</span><h2>{p.name}</h2>{activeGame.rules?.teamMembers?.[p.name]?.length > 0 && <p>{activeGame.rules.teamMembers[p.name].join(' · ')}</p>}</div><div className="truco-score-bubble"><strong>{score}</strong><small>/{trucoTarget}</small></div></div>
                   <div className="tally-touch-area">
-                    <div className="tally-section-mobile"><div className="tally-label-row"><span>MALAS</span><strong>{malas}<small>/{trucoSplit}</small></strong></div><div className="tally-lines-grid">{Array.from({ length: trucoSplit }, (_, n) => <button type="button" key={n} aria-label={`Marcar ${n + 1} malas para ${p.name}`} className={`tally-line ${n < malas ? 'marked' : ''}`} onClick={() => setTrucoScoreAt(p.name, n + 1)} disabled={busy || won}>{/* each line is a direct tap target */}</button>)}</div></div>
-                    <div className="tally-section-mobile"><div className="tally-label-row"><span>BUENAS</span><strong>{buenas}<small>/{remainingSlots}</small></strong></div><div className="tally-lines-grid">{Array.from({ length: remainingSlots }, (_, n) => <button type="button" key={n} aria-label={`Marcar ${trucoSplit + n + 1} tantos para ${p.name}`} className={`tally-line ${n < buenas ? 'marked' : ''}`} onClick={() => setTrucoScoreAt(p.name, trucoSplit + n + 1)} disabled={busy || won}>{/* each line is a direct tap target */}</button>)}</div></div>
-                    <span className="tap-hint">{won ? '¡Llegó a la meta!' : 'Tocá una línea para marcar ese tanto'}</span>
+                    <div className="tally-section-mobile"><div className="tally-label-row"><span>MALAS</span><strong>{malas}<small>/{trucoSplit}</small></strong></div><div className="tally-bundles-grid">{Array.from({ length: Math.ceil(trucoSplit / 5) }, (_, n) => { const fill = Math.min(5, Math.max(0, malas - n * 5)); const blockEnd = Math.min((n + 1) * 5, trucoSplit); const canTap = !busy && !won && score < trucoSplit && score >= n * 5 && score < blockEnd; return <TallyBundle key={n} fill={fill} disabled={!canTap} onClick={() => setTrucoScoreAt(p.name, Math.min(trucoTarget, score + 1))} label={`Malas, bloque ${n + 1}: ${fill} de 5. Tocá para sumar el siguiente tanto.`} />; })}</div></div>
+                    <div className="tally-section-mobile"><div className="tally-label-row"><span>BUENAS</span><strong>{buenas}<small>/{remainingSlots}</small></strong></div><div className="tally-bundles-grid">{Array.from({ length: Math.ceil(remainingSlots / 5) }, (_, n) => { const fill = Math.min(5, Math.max(0, buenas - n * 5)); const blockEnd = Math.min((n + 1) * 5, remainingSlots); const canTap = !busy && !won && score >= trucoSplit && buenas >= n * 5 && buenas < blockEnd; return <TallyBundle key={n} fill={fill} disabled={!canTap} onClick={() => setTrucoScoreAt(p.name, Math.min(trucoTarget, score + 1))} label={`Buenas, bloque ${n + 1}: ${fill} de 5. Tocá para sumar el siguiente tanto.`} />; })}</div></div>
+                    <span className="tap-hint">{won ? '¡Llegó a la meta!' : score < trucoSplit ? 'Marcá las malas; las buenas se habilitan al completar 15.' : 'Tocá el bloque incompleto para dibujar el siguiente tanto.'}</span>
                   </div>
                   <div className="team-score-actions"><button type="button" onClick={() => setTrucoScoreAt(p.name, Math.max(0, score - 1))} disabled={busy || score <= (Number(totals[p.name]) || 0)}>− 1 tanto</button><button type="button" onClick={() => setTrucoScoreAt(p.name, Math.min(trucoTarget, score + 1))} disabled={busy || score >= trucoTarget}>+ 1 tanto</button></div>
                 </section>;
