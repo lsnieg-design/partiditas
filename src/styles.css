@@ -464,3 +464,222 @@ input::placeholder, textarea::placeholder {
   .team-score-actions button { min-height: 38px !important; padding: 4px !important; font-size: 11px !important; }
   .mobile-play-bottom { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
 }
+
+/* v1.0 — interfaz móvil rediseñada como app */
+html, body, #root { min-height: 100%; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+button, a, input, textarea, select { touch-action: manipulation; }
+input, textarea, select, .form-panel input, .form-panel select,
+.mobile-modal-label input, .mobile-modal-label select,
+.mobile-modal-label textarea, .join-modal-form input {
+  font-size: 16px !important;
+  line-height: 1.25;
+}
+input::placeholder, textarea::placeholder { font-size: 16px; }
+
+/* Pantalla principal: menos texto, tarjetas realmente compactas. */
+.join-trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 14px 0 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--app-line, #e9e2d4);
+  border-radius: 14px;
+  background: #f0eee4;
+  color: var(--app-ink, #34352f);
+  text-align: left;
+}
+.join-trigger-icon { width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 12px; background: #fffdf7; color: #59784d; }
+.join-trigger > span:nth-child(2) { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.join-trigger strong { font-size: 14px; }
+.join-trigger small { color: #77786e; font-size: 12px; }
+.join-trigger-arrow { flex: 0 0 auto; transform: rotate(180deg); color: #64775a; }
+.home-section-head { margin-top: 4px; }
+
+/* Evita el zoom de Safari: los inputs reales nunca bajan de 16px. */
+body.modal-open { overflow: hidden !important; overscroll-behavior: none; }
+
+/* En una partida solo existe la pantalla del juego: sin header, footer ni página detrás. */
+body.game-active { overflow: hidden !important; width: 100%; height: 100%; }
+.app-shell-play {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 50;
+  width: 100% !important;
+  max-width: none !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: max(5px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left)) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  overflow: hidden !important;
+  background: #fbf7ee;
+}
+.app-shell-play .mobile-play-screen {
+  width: 100% !important;
+  max-width: 620px !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  margin: 0 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+.app-shell-play .mobile-play-top {
+  flex: 0 0 auto;
+  padding: 7px 0 10px !important;
+  gap: 8px !important;
+  border-bottom: 1px solid #e9e2d4;
+}
+.app-shell-play .mobile-play-content {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch;
+  padding: 9px 0 8px !important;
+}
+.app-shell-play .mobile-play-bottom {
+  flex: 0 0 auto !important;
+  padding: 8px 0 max(9px, env(safe-area-inset-bottom)) !important;
+  background: #fbf7ee !important;
+}
+.app-shell-play .mobile-play-title { min-width: 0; }
+.app-shell-play .mobile-play-title strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.app-shell-play .mobile-play-title .eyebrow { font-size: 9px; }
+.app-shell-play .mini-back, .app-shell-play .mini-finish { min-height: 39px; }
+.app-shell-play .mobile-match-meta { margin: 0 0 7px !important; font-size: 9px !important; }
+.app-shell-play .truco-tap-instruction { padding: 6px 8px !important; margin: 0 0 7px !important; font-size: 10px !important; line-height: 1.25 !important; }
+.app-shell-play .truco-mobile-teams {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  align-items: stretch !important;
+  gap: 7px !important;
+}
+.app-shell-play .truco-mobile-team {
+  min-width: 0 !important;
+  padding: 8px 6px !important;
+  border-radius: 13px !important;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+.app-shell-play .truco-team-head { align-items: flex-start !important; gap: 4px !important; margin-bottom: 7px !important; }
+.app-shell-play .team-kicker { font-size: 8px !important; }
+.app-shell-play .truco-team-head h2 { font-size: clamp(12px, 3.8vw, 17px) !important; line-height: 1.12 !important; overflow-wrap: anywhere; }
+.app-shell-play .truco-team-head p { font-size: 9px !important; line-height: 1.2 !important; }
+.app-shell-play .truco-score-bubble { min-width: 0 !important; padding: 5px 6px !important; border-radius: 10px !important; }
+.app-shell-play .truco-score-bubble strong { font-size: 24px !important; }
+.app-shell-play .truco-score-bubble small { font-size: 9px !important; }
+.app-shell-play .tally-touch-area { gap: 6px !important; }
+.app-shell-play .tally-section-mobile { padding: 6px 4px !important; border-radius: 9px !important; }
+.app-shell-play .tally-label-row { font-size: 9px !important; gap: 3px !important; margin-bottom: 4px !important; letter-spacing: .04em !important; }
+.app-shell-play .tally-label-row strong { font-size: 10px !important; }
+.app-shell-play .tally-label-row small { font-size: 8px !important; }
+.app-shell-play .tally-bundles-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 3px !important; }
+.app-shell-play .tally-bundle { min-height: 43px !important; padding: 2px 1px !important; gap: 1px !important; border-radius: 7px !important; }
+.app-shell-play .tally-bundle-svg { height: 28px !important; max-width: 42px !important; }
+.app-shell-play .tally-stroke { stroke-width: 3.8 !important; }
+.app-shell-play .tally-bundle span { font-size: 8px !important; }
+.app-shell-play .tap-hint { font-size: 9px !important; margin-top: 5px !important; line-height: 1.2 !important; }
+.app-shell-play .team-score-actions { gap: 4px !important; margin-top: 6px !important; }
+.app-shell-play .team-score-actions button { min-height: 34px !important; font-size: 10px !important; border-radius: 8px !important; }
+.app-shell-play .pending-round-banner { margin-top: 7px !important; padding: 8px 10px !important; font-size: 10px !important; }
+.app-shell-play .mobile-score-cards { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px !important; }
+.app-shell-play .mobile-player-score { min-width: 0; grid-template-columns: 24px minmax(0,1fr) auto; gap: 6px !important; padding: 9px 7px !important; border-radius: 11px !important; }
+.app-shell-play .mobile-player-rank { width: 23px !important; height: 23px !important; font-size: 10px !important; border-radius: 7px !important; }
+.app-shell-play .mobile-player-data strong { font-size: 12px !important; }
+.app-shell-play .mobile-player-data small { font-size: 9px !important; }
+.app-shell-play .mobile-player-total { font-size: 21px !important; }
+.app-shell-play .mobile-score-summary { margin-top: 7px !important; padding: 9px 11px !important; }
+.app-shell-play .mobile-last-round { margin-top: 7px !important; padding: 9px !important; }
+.app-shell-play .mobile-history { margin-top: 9px !important; padding: 9px 10px !important; border-radius: 11px !important; }
+.app-shell-play .mobile-history-heading { width: 100%; border: 0; padding: 2px 0; background: transparent; display: flex; align-items: center; gap: 8px; text-align: left; }
+.app-shell-play .mobile-history-heading h3 { font-size: 12px !important; margin: 0; flex: 1; }
+.app-shell-play .history-chevron { font-size: 17px; color: #66795b; font-weight: 800; }
+.app-shell-play .mobile-primary-action { min-height: 47px !important; border-radius: 12px !important; font-size: 14px !important; }
+.app-shell-play .mobile-secondary-action { min-height: 38px !important; border-radius: 10px !important; font-size: 12px !important; }
+.app-shell-play .play-toast { position: fixed; top: max(8px, env(safe-area-inset-top)); left: 12px; right: 12px; z-index: 1800; margin: 0; box-shadow: 0 5px 24px #2222; }
+.app-shell-play .busy { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); z-index: 1700; }
+
+/* En pantallas de teléfono: una columna de mesas, sin tarjetas enormes ni huecos. */
+@media (max-width: 430px) {
+  .app-shell:not(.app-shell-play) { width: 100%; padding: 0 13px !important; margin: 0 auto; }
+  .topbar { height: auto !important; min-height: 58px !important; padding: max(5px, env(safe-area-inset-top)) 0 8px !important; gap: 8px !important; }
+  .brand { gap: 7px !important; font-size: 17px !important; }
+  .brand-logo { width: 35px !important; height: 35px !important; }
+  .brand small { font-size: 9px !important; }
+  .topbar-actions { flex: 0 0 auto; }
+  .install-cta { min-height: 37px !important; padding: 8px 10px !important; gap: 5px !important; border-radius: 9px !important; font-size: 9px !important; white-space: nowrap; }
+  .install-cta svg { width: 14px; height: 14px; }
+  .top-note { display: none !important; }
+  .hero.home-hero-compact { display: none !important; }
+  .home-section-head { margin: 14px 0 11px !important; align-items: center !important; gap: 8px !important; }
+  .home-section-head h2 { font-size: 20px !important; line-height: 1.15 !important; }
+  .home-section-head .section-subtitle { display: none !important; }
+  .home-section-actions { flex-direction: row !important; align-items: center !important; gap: 0 !important; }
+  .home-section-actions .count-pill { display: none !important; }
+  .new-table-button { min-height: 42px !important; padding: 9px 12px !important; font-size: 11px !important; border-radius: 10px !important; }
+  .group-grid { grid-template-columns: minmax(0,1fr) !important; gap: 8px !important; margin: 0 !important; }
+  .group-card { min-height: 0 !important; height: auto !important; padding: 0 !important; border-radius: 13px !important; overflow: hidden !important; }
+  .group-card-open { min-height: 100px !important; height: auto !important; padding: 11px 56px 11px 14px !important; justify-content: space-between !important; gap: 5px !important; }
+  .group-card-open .pin { right: 50px !important; top: 11px !important; }
+  .group-card-open .card-kicker { font-size: 8px !important; letter-spacing: .12em !important; }
+  .group-card-open strong { margin: 4px 0 5px !important; font-size: 18px !important; line-height: 1.15 !important; }
+  .group-card-open .card-bottom { gap: 6px !important; font-size: 11px !important; }
+  .group-card-open .card-bottom span { font-size: 16px !important; }
+  .group-card-actions { top: 7px !important; right: 7px !important; gap: 4px !important; }
+  .group-card-actions button { width: 30px !important; height: 30px !important; border-radius: 9px !important; }
+  .home-empty { margin: 6px 0 12px !important; padding: 20px 14px !important; border-radius: 13px !important; }
+  .home-empty strong { font-size: 14px !important; }
+  .home-empty p { font-size: 12px !important; line-height: 1.45 !important; }
+  .join-trigger { margin-top: 11px !important; padding: 10px 11px !important; border-radius: 13px !important; }
+  .join-trigger-icon { width: 36px; height: 36px; }
+  .join-trigger strong { font-size: 13px !important; }
+  .join-trigger small { font-size: 11px !important; }
+  .privacy-note, footer { display: none !important; }
+  .form-panel { padding: 16px 13px !important; margin: 8px 0 14px !important; border-radius: 14px !important; }
+  .form-panel h1 { font-size: 26px !important; margin: 7px 0 9px !important; line-height: 1.08 !important; }
+  .form-panel > p { margin-bottom: 14px !important; font-size: 13px !important; line-height: 1.42 !important; }
+  .form-panel form { gap: 13px !important; }
+  .form-panel label { font-size: 13px !important; }
+  .form-panel input, .form-panel select { min-height: 47px !important; padding: 10px 12px !important; border-radius: 11px !important; }
+  .field-help { font-size: 11px !important; line-height: 1.4 !important; }
+  .back-link { min-height: 36px; padding: 5px 0 !important; font-size: 12px !important; }
+  .group-banner { margin: 6px 0 14px !important; padding: 15px !important; border-radius: 14px !important; }
+  .group-banner h1 { margin: 6px 0 !important; font-size: 27px !important; line-height: 1.1 !important; }
+  .group-banner p { display: none !important; }
+  .banner-stamp { display: none !important; }
+  .group-share-details { margin-top: 8px !important; }
+  .group-share-details .group-id { margin-top: 6px !important; gap: 5px !important; }
+  .action-row { margin: 12px 0 8px !important; }
+  .action-row h2 { font-size: 18px !important; }
+  .game-grid { grid-template-columns: repeat(2, minmax(0,1fr)) !important; gap: 8px !important; }
+  .game-card { min-height: 96px !important; padding: 11px !important; gap: 5px !important; border-radius: 12px !important; }
+  .game-emoji { font-size: 21px !important; }
+  .game-card strong { font-size: 13px !important; line-height: 1.1 !important; }
+  .game-card small { font-size: 10px !important; line-height: 1.25 !important; }
+  .history-section { margin: 17px 0 10px !important; }
+  .history-section h2 { font-size: 18px !important; }
+  .history-item { padding: 10px 2px !important; }
+  .history-main strong { font-size: 12px !important; }
+  .history-main span, .history-main small { font-size: 10px !important; }
+  .join-modal-form { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px max(18px, env(safe-area-inset-bottom)); }
+  .join-modal-form .mobile-modal-label { margin: 0 !important; }
+  .join-modal-form input { min-height: 48px !important; }
+}
+@media (min-width: 431px) and (max-width: 640px) {
+  .group-grid { grid-template-columns: repeat(2, minmax(0,1fr)) !important; }
+  .group-card { min-height: 116px !important; }
+  .group-card-open { min-height: 116px !important; }
+}
