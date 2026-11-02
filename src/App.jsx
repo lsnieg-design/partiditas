@@ -429,10 +429,46 @@ export default function App() {
     }
   }
 
-  function setTrucoScoreAt(playerName, requestedScore) {
+  async function setTrucoScoreAt(playerName, requestedScore) {
+    if (!activeGame || busy) return;
     const persisted = Number(totals[playerName]) || 0;
     const next = Math.max(persisted, Math.min(trucoTarget, requestedScore));
-    setRoundScores(current => ({ ...current, [playerName]: Math.max(0, next - persisted) }));
+    const updatedPending = {
+      ...roundScores,
+      [playerName]: Math.max(0, next - persisted)
+    };
+    setRoundScores(updatedPending);
+
+    // Si este tanto completa el objetivo, guardamos la mano automáticamente
+    // y cerramos la partida después de que Sheets confirme el guardado.
+    if (next < trucoTarget) return;
+    const scores = Object.fromEntries(activeGame.players.map(p => [p.name, Number(updatedPending[p.name]) || 0]));
+    if (!Object.values(scores).some(value => value !== 0)) return;
+
+    setBusy(true);
+    setError('');
+    try {
+      const saved = await api('addRound', {
+        groupId: group.id,
+        accessCode: group.accessCode || '',
+        gameId: activeGame.id,
+        scores,
+        note: 'Última mano · objetivo alcanzado'
+      });
+      const savedTotals = Object.fromEntries(activeGame.players.map(p => [
+        p.name,
+        (saved.game.rounds || []).reduce((sum, round) => sum + (Number(round.scores?.[p.name]) || 0), 0)
+      ]));
+      setActiveGame(saved.game);
+      setRoundScores(Object.fromEntries(activeGame.players.map(p => [p.name, 0])));
+      setRoundNote('');
+      setBusy(false);
+      await finishAndCelebrate(saved.game, savedTotals);
+    } catch (e) {
+      // Si falla el guardado, mantenemos los tantos en pantalla para reintentar.
+      setError(`No se pudo guardar la última mano. Los tantos siguen en pantalla. ${e.message}`);
+      setBusy(false);
+    }
   }
 
   function openRuleEditor(gameId, returnTo = 'rules') {
